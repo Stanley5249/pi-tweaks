@@ -6,11 +6,10 @@ import {
 } from "../../src/statusline/render";
 import type { FooterSnapshot } from "../../src/statusline/render";
 import { collectUsage } from "../../src/statusline/stats";
-import {
-  createPalette,
-  isFlavor,
-  resolveFlavor,
-} from "../../src/statusline/palette";
+import { isFlavor } from "../../src/statusline/palette";
+import type { FooterTheme } from "../../src/statusline/palette";
+
+const theme: FooterTheme = { bold: (text) => text, fg: (_color, text) => text };
 
 const kilo = 1000;
 const cacheRead = 3000;
@@ -56,13 +55,16 @@ function snapshot(): FooterSnapshot {
 
 function noOperation(): void {}
 
-test("rebuilds theme colors and disposes the branch subscription once", () => {
+test("uses live theme helpers and disposes the branch subscription once", () => {
   let listener = noOperation;
-  let themeName = "catppuccin-mocha";
+  let color = "31";
+  const liveTheme: FooterTheme = {
+    bold: (text) => text,
+    fg: (_token, text) => `\u001B[${color}m${text}\u001B[39m`,
+  };
   let renders = 0;
   let disposed = 0;
   const footer = createStatusFooter(snapshot, {
-    getThemeName: () => themeName,
     onBranchChange: (handler) => {
       listener = handler;
       return () => {
@@ -72,9 +74,10 @@ test("rebuilds theme colors and disposes the branch subscription once", () => {
     requestRender: () => {
       renders += 1;
     },
+    theme: liveTheme,
   });
   const before = footer.render(wideTerminal).join("");
-  themeName = "catppuccin-latte";
+  color = "32";
   footer.invalidate();
   expect(footer.render(wideTerminal).join("")).not.toBe(before);
   listener();
@@ -86,11 +89,7 @@ test("rebuilds theme colors and disposes the branch subscription once", () => {
 });
 
 test("shows path, branch, session, usage, cache rate, model, and thinking", () => {
-  const lines = renderStatusLine(
-    snapshot(),
-    createPalette("mocha"),
-    wideTerminal,
-  );
+  const lines = renderStatusLine(snapshot(), theme, wideTerminal);
   const text = lines.map((line) => stripTerminalSequences(line)).join("\n");
   expect(text).toContain("project (main)");
   expect(text).toContain("session");
@@ -119,13 +118,13 @@ test("preserves model and context before secondary metrics", () => {
     },
   };
   const normal = stripTerminalSequences(
-    renderStatusLine(data, createPalette("mocha"), normalWidth).at(1) ?? "",
+    renderStatusLine(data, theme, normalWidth).at(1) ?? "",
   );
   expect(normal).toContain("gemini-3-pro");
   expect(normal).toContain("ctx 25%/128k");
   expect(normal).not.toContain("read ");
   const narrow = stripTerminalSequences(
-    renderStatusLine(data, createPalette("mocha"), narrowWidth).at(1) ?? "",
+    renderStatusLine(data, theme, narrowWidth).at(1) ?? "",
   );
   expect(narrow).toContain("gemini-3-pro");
   expect(narrow).toContain("ctx 25%");
@@ -139,7 +138,7 @@ test("shortens long paths before hiding the branch", () => {
     cwd: "a/very/long/path/that/would/otherwise/hide/the/branch",
   };
   const top = stripTerminalSequences(
-    renderStatusLine(data, createPalette("mocha"), pathWidth).at(0) ?? "",
+    renderStatusLine(data, theme, pathWidth).at(0) ?? "",
   );
   expect(top).toContain("(main)");
   expect(top).not.toContain("session");
@@ -153,7 +152,7 @@ test("bounds narrow and Chinese footer rows", () => {
     statuses: ["中文狀態"],
   };
   for (const width of [0, 1, compactWidth, wideTerminal]) {
-    const lines = renderStatusLine(data, createPalette("mocha"), width);
+    const lines = renderStatusLine(data, theme, width);
     for (const line of lines) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
@@ -168,7 +167,7 @@ test("sanitizes external text and keeps extension statuses visible", () => {
     sessionName: "\u001B[31msession\u001B[0m",
     statuses: ["tool\nstatus\u0007"],
   };
-  const text = renderStatusLine(data, createPalette("mocha"), wideTerminal)
+  const text = renderStatusLine(data, theme, wideTerminal)
     .map((line) => stripTerminalSequences(line))
     .join("\n");
   expect(text).toContain("main branch");
@@ -183,7 +182,7 @@ test("shows unknown context and no-model without invented usage", () => {
     model: undefined,
     stats: collectUsage([]),
   };
-  const text = renderStatusLine(data, createPalette("mocha"), wideTerminal)
+  const text = renderStatusLine(data, theme, wideTerminal)
     .map((line) => stripTerminalSequences(line))
     .join("\n");
   expect(text).toContain("ctx ?/0");
@@ -191,20 +190,42 @@ test("shows unknown context and no-model without invented usage", () => {
   expect(text).not.toContain("in ");
 });
 
-test("resolves Catppuccin flavors and defaults other themes to mocha", () => {
-  expect(resolveFlavor("catppuccin-latte")).toBe("latte");
-  expect(resolveFlavor("CATPPUCCIN-FRAPPE")).toBe("frappe");
-  expect(resolveFlavor("catppuccin-macchiato")).toBe("macchiato");
-  expect(resolveFlavor("dark")).toBe("mocha");
-  expect(resolveFlavor()).toBe("mocha");
+test("validates Catppuccin flavor names", () => {
   expect(isFlavor("mocha")).toBe(true);
   expect(isFlavor("toString")).toBe(false);
 });
 
-test("creates flavor-specific terminal colors", () => {
-  const mocha = createPalette("mocha").blue("中文");
-  const latte = createPalette("latte").blue("中文");
-  expect(mocha).toContain("\u001B[38;2;");
-  expect(mocha).toContain("中文");
-  expect(mocha).not.toBe(latte);
+test("reserves warning colors for context pressure", () => {
+  const colors: string[] = [];
+  const recordingTheme: FooterTheme = {
+    bold: (text) => text,
+    fg: (color, text) => {
+      colors.push(color);
+      return text;
+    },
+  };
+  renderStatusLine(snapshot(), recordingTheme, wideTerminal);
+  expect(colors).toContain("accent");
+  expect(colors).not.toContain("warning");
+  expect(colors).not.toContain("error");
+  const warningPercent = 50;
+  renderStatusLine(
+    {
+      ...snapshot(),
+      contextUsage: { contextWindow, percent: warningPercent, tokens: kilo },
+    },
+    recordingTheme,
+    wideTerminal,
+  );
+  expect(colors).toContain("warning");
+  const criticalPercent = 80;
+  renderStatusLine(
+    {
+      ...snapshot(),
+      contextUsage: { contextWindow, percent: criticalPercent, tokens: kilo },
+    },
+    recordingTheme,
+    wideTerminal,
+  );
+  expect(colors).toContain("error");
 });

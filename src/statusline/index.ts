@@ -6,6 +6,7 @@ import type {
   ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
 import { isFlavor } from "./palette";
+import type { FooterTheme } from "./palette";
 import { createStatusFooter } from "./render";
 import type { StatusModel } from "./render";
 import { collectUsage } from "./stats";
@@ -59,7 +60,7 @@ class FooterController implements StatusController {
     ctx.ui.setFooter(
       (
         tui: Readonly<{ requestRender: () => void }>,
-        theme: Readonly<{ name?: string | undefined }>,
+        theme: FooterTheme,
         footerData: FooterData,
       ) =>
         createStatusFooter(
@@ -75,9 +76,9 @@ class FooterController implements StatusController {
             thinkingLevel: ctx.thinkingLevel,
           }),
           {
-            getThemeName: () => theme.name,
             onBranchChange: (handler) => footerData.onBranchChange(handler),
             requestRender: () => tui.requestRender(),
+            theme,
           },
         ),
     );
@@ -97,9 +98,7 @@ class FooterController implements StatusController {
     this.enabled = !this.enabled;
     this.start(ctx);
     ctx.ui.notify(
-      this.enabled
-        ? "Catppuccin status bar enabled"
-        : "Default status bar restored",
+      this.enabled ? "Statusline enabled" : "Default statusline restored",
       "info",
     );
   }
@@ -156,7 +155,7 @@ export default function statusLineExtension(
     controller.stop(ctx),
   );
   pi.registerCommand("statusline", {
-    description: "Toggle Catppuccin status bar",
+    description: "Toggle statusline",
     handler: async (_args, ctx: StatusContext) => controller.toggle(ctx),
   });
   pi.registerCommand("catppuccin", {
