@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import {
   createStatusController,
   selectFlavor,
-} from "../../src/status-line/index";
-import type { StatusContext } from "../../src/status-line/index";
+} from "../../src/statusline/index";
+import type { StatusContext } from "../../src/statusline/index";
 
 type Notifications = { message: string; type: string | undefined }[];
 

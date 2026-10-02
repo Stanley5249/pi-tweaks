@@ -4,8 +4,8 @@ import {
   collectUsage,
   formatCwd,
   formatTokens,
-} from "../../src/status-line/stats";
-import type { TokenUsage, UsageEntry } from "../../src/status-line/stats";
+} from "../../src/statusline/stats";
+import type { TokenUsage, UsageEntry } from "../../src/statusline/stats";
 
 const kilo = 1000;
 const million = kilo * kilo;

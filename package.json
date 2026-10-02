@@ -7,7 +7,7 @@
   "pi": {
     "extensions": [
       "./src/context/index.ts",
-      "./src/status-line/index.ts"
+      "./src/statusline/index.ts"
     ]
   },
   "peerDependencies": {

@@ -3,14 +3,14 @@ import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import {
   createStatusFooter,
   renderStatusLine,
-} from "../../src/status-line/render";
-import type { FooterSnapshot } from "../../src/status-line/render";
-import { collectUsage } from "../../src/status-line/stats";
+} from "../../src/statusline/render";
+import type { FooterSnapshot } from "../../src/statusline/render";
+import { collectUsage } from "../../src/statusline/stats";
 import {
   createPalette,
   isFlavor,
   resolveFlavor,
-} from "../../src/status-line/palette";
+} from "../../src/statusline/palette";
 
 const kilo = 1000;
 const cacheRead = 3000;
