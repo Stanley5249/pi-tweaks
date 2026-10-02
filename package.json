@@ -4,7 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Personal Pi extensions for context, scrolling, and status display.",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-tui": "1.0.0",
     "@types/bun": "1.4.2",
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",

@@ -1,0 +1,91 @@
+import type {
+  BuildSystemPromptOptions,
+  ContextUsage,
+} from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
+
+const charsPerToken = 4;
+
+export type ContextDumpData = {
+  basePromptCharEstimate?: number;
+  contextFileCharCount?: number;
+  model?: string | undefined;
+  promptCharCount: number;
+  provider?: string | undefined;
+  systemPrompt: string;
+  thinkingLevel?: string | undefined;
+  usage?: Readonly<ContextUsage> | undefined;
+};
+
+export type PromptSource = {
+  getContextUsage: () => ContextUsage | undefined;
+  getSystemPrompt: () => string;
+  getSystemPromptOptions: () => Pick<
+    BuildSystemPromptOptions,
+    "forceSystemPrompt"
+  > & {
+    contextFiles?: readonly Readonly<{ content: string }>[];
+  };
+  model?: Readonly<{ id: string; provider: string }> | undefined;
+  thinkingLevel: string;
+};
+
+export function collectPromptData(
+  source: Readonly<PromptSource>,
+): ContextDumpData {
+  const systemPrompt = source.getSystemPrompt();
+  const options = source.getSystemPromptOptions();
+  const contextFileCharCount =
+    options.forceSystemPrompt === undefined
+      ? (options.contextFiles?.reduce(
+          (total, file) => total + file.content.length,
+          0,
+        ) ?? 0)
+      : 0;
+  return {
+    basePromptCharEstimate: Math.max(
+      0,
+      systemPrompt.length - contextFileCharCount,
+    ),
+    contextFileCharCount,
+    model: source.model?.id,
+    promptCharCount: systemPrompt.length,
+    provider: source.model?.provider,
+    systemPrompt,
+    thinkingLevel: source.thinkingLevel,
+    usage: source.getContextUsage(),
+  };
+}
+
+export function formatPromptSizeEstimate(
+  data: Readonly<ContextDumpData>,
+): string {
+  const { basePromptCharEstimate: base, contextFileCharCount: context } = data;
+  if (base === undefined || context === undefined) {
+    return "context estimate not recorded";
+  }
+  const roughTokens = Math.ceil(base / charsPerToken);
+  return `excluding raw context bodies ~${base.toLocaleString()} chars (~${roughTokens.toLocaleString()} tokens, chars/4) | raw context bodies ${context.toLocaleString()} chars`;
+}
+
+export function sanitizeForTerminal(text: string): string {
+  const normalized = stripTerminalSequences(text)
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .replaceAll("\t", "   ");
+  return Array.from(normalized, (character) => {
+    const isControl =
+      character < " " || (character >= "\u007F" && character <= "\u009F");
+    return isControl && character !== "\n" ? "" : character;
+  }).join("");
+}
+
+export function sanitizeSingleLine(text: string): string {
+  return sanitizeForTerminal(text).replaceAll("\n", " ");
+}
+
+export function formatModel(data: Readonly<ContextDumpData>): string {
+  const provider = sanitizeSingleLine(data.provider ?? "");
+  const model = sanitizeSingleLine(data.model ?? "unknown");
+  return provider ? `${provider}/${model}` : model;
+}

@@ -30,6 +30,10 @@
   },
   "rules": {
     "one-var": ["error", "never"],
+    "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
+    "no-magic-numbers": ["error", { "ignore": [-1, 0, 1] }],
+    "no-ternary": "off",
+    "import/group-exports": "off",
     "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
     "sort-imports": ["error", { "ignoreDeclarationSort": true }],
     "import/no-nodejs-modules": "off",

@@ -39,6 +39,9 @@ promises and compiler errors.
 - Keep one variable per declaration and named function declarations, while
   allowing arrow callbacks.
 - Check imported member ordering without imposing a second declaration sorter.
+  Permit separate type imports and exports next to their declarations.
+- Permit simple ternaries and the conventional boundary values -1, 0, and 1;
+  keep other numeric values named and retain nested-ternary checks.
 - Require async declarations for promise-returning functions, but not an await
   in every implementation of an asynchronous contract.
 - Permit numeric template interpolation and concise void-returning callbacks,
