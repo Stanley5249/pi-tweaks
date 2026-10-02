@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
@@ -114,6 +114,31 @@ test("saves the raw prompt relative to the command working directory", async () 
       "raw prompt\u001B[31m",
     );
     expect(state.notifications.at(-1)?.type).toBe("info");
+  } finally {
+    await rm(cwd, { force: true, recursive: true });
+  }
+});
+
+test("refuses existing files unless overwrite is explicit", async () => {
+  const state = fixture();
+  const cwd = await mkdtemp(join(import.meta.dir, ".save-"));
+  const file = join(cwd, "my  prompt.md");
+  try {
+    await writeFile(file, "existing text");
+    await runContextCommand(
+      'save "my  prompt.md"',
+      { ...state.ctx, cwd },
+      state.api,
+    );
+    expect(await readFile(file, "utf8")).toBe("existing text");
+    expect(state.notifications.at(-1)?.message).toContain("--force");
+    await runContextCommand(
+      'save --force "my  prompt.md"',
+      { ...state.ctx, cwd },
+      state.api,
+    );
+    expect(await readFile(file, "utf8")).toBe("raw prompt\u001B[31m");
+    expect(state.entries).toHaveLength(0);
   } finally {
     await rm(cwd, { force: true, recursive: true });
   }

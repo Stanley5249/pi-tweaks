@@ -23,7 +23,7 @@ import type { ContextDumpData, PromptSource } from "./data";
 import { createPromptViewer } from "./viewer";
 
 const cardPadding = 1;
-const usage = "Usage: /context [view|chat|copy|save [file]]";
+const usage = "Usage: /context [view|chat|copy|save [--force] [file]]";
 type Clipboard = (text: string) => Promise<void>;
 type CommandEffects = Readonly<
   Pick<ExtensionAPI, "appendEntry"> & {
@@ -103,14 +103,25 @@ async function copyPrompt(
 
 async function savePrompt(
   prompt: string,
-  file: string,
+  command: Readonly<{ file: string; overwrite: boolean }>,
   ctx: ContextCommandSource,
 ): Promise<void> {
+  const { file, overwrite } = command;
   try {
-    await writeFile(resolve(ctx.cwd, file), prompt, "utf8");
+    // Exclusive creation avoids an overwrite race between checking and writing.
+    await writeFile(resolve(ctx.cwd, file), prompt, {
+      encoding: "utf8",
+      flag: overwrite ? "w" : "wx",
+    });
     ctx.ui.notify(`Saved system prompt to ${file}`, "info");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const exists =
+      error instanceof Error && "code" in error && error.code === "EEXIST";
+    let message = error instanceof Error ? error.message : "Unknown error";
+    if (exists) {
+      message =
+        "File already exists; use /context save --force [file] to overwrite";
+    }
     ctx.ui.notify(`Failed to save system prompt: ${message}`, "error");
   }
 }
@@ -165,7 +176,7 @@ export async function runContextCommand(
       break;
     }
     case "save": {
-      await savePrompt(data.systemPrompt, command.file, ctx);
+      await savePrompt(data.systemPrompt, command, ctx);
       break;
     }
     case "chat": {
@@ -194,7 +205,7 @@ export default function contextExtension(pi: ContextAPI): void {
   );
   pi.registerCommand("context", {
     description:
-      "Inspect system prompt (/context [view|chat|copy|save [file]])",
+      "Inspect system prompt (/context [view|chat|copy|save [--force] [file]])",
     handler: async (args, ctx: ContextCommandSource) =>
       runContextCommand(args, ctx, pi),
   });

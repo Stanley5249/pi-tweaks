@@ -27,13 +27,37 @@ test("parses context actions and save paths", () => {
   expect(parseContextCommand("save")).toEqual({
     file: "system-prompt.md",
     mode: "save",
+    overwrite: false,
   });
   expect(parseContextCommand("save nested/prompt snapshot.md")).toEqual({
     file: "nested/prompt snapshot.md",
     mode: "save",
+    overwrite: false,
   });
   expect(parseContextCommand("unknown")).toBeUndefined();
   expect(parseContextCommand("view unexpected")).toBeUndefined();
+});
+
+test("preserves save paths and accepts matching quotes and explicit overwrite", () => {
+  for (const path of ["my  prompt.md", '"my  prompt.md"', "'my  prompt.md'"]) {
+    expect(parseContextCommand(`save ${path}`)).toEqual({
+      file: "my  prompt.md",
+      mode: "save",
+      overwrite: false,
+    });
+  }
+  expect(parseContextCommand('save --force "my prompt.md"')).toEqual({
+    file: "my prompt.md",
+    mode: "save",
+    overwrite: true,
+  });
+  expect(parseContextCommand("save --force")).toEqual({
+    file: "system-prompt.md",
+    mode: "save",
+    overwrite: true,
+  });
+  expect(parseContextCommand('save "unfinished')).toBeUndefined();
+  expect(parseContextCommand('save ""')).toBeUndefined();
 });
 
 test("captures the exact prompt and separates raw context file bodies", () => {

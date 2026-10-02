@@ -5,6 +5,7 @@ import type {
 import { sanitizeSingleLine } from "../terminal";
 
 const charsPerToken = 4;
+const quotePairLength = 2;
 
 export type ContextDumpData = {
   basePromptCharEstimate?: number;
@@ -19,13 +20,29 @@ export type ContextDumpData = {
 
 export type ContextCommand =
   | Readonly<{ mode: "chat" | "copy" | "view" }>
-  | Readonly<{ file: string; mode: "save" }>;
+  | Readonly<{ file: string; mode: "save"; overwrite: boolean }>;
+
+function parseSaveCommand(input: string): ContextCommand | undefined {
+  const overwrite = /^--force(?:\s+|$)/u.test(input);
+  const path = overwrite ? input.replace(/^--force\s*/u, "") : input;
+  const quote = path.charAt(0);
+  if (quote === '"' || quote === "'") {
+    if (path.length < quotePairLength || !path.endsWith(quote)) {
+      return undefined;
+    }
+    const file = path.slice(1, -1);
+    return file === "" ? undefined : { file, mode: "save", overwrite };
+  }
+  return { file: path || "system-prompt.md", mode: "save", overwrite };
+}
 
 export function parseContextCommand(input: string): ContextCommand | undefined {
-  const [command = "", ...rest] = input.trim().split(/\s+/u);
+  const match = /^(?<command>\S+)(?:\s+(?<rest>[\s\S]*))?$/u.exec(input.trim());
+  const command = match?.groups?.["command"] ?? "";
+  const rest = match?.groups?.["rest"] ?? "";
   switch (command.toLowerCase()) {
     case "save": {
-      return { file: rest.join(" ") || "system-prompt.md", mode: "save" };
+      return parseSaveCommand(rest);
     }
     case "":
     case "view": {
