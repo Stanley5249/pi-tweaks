@@ -1,10 +1,18 @@
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
-import { bold } from "./palette";
+import { bold, createPalette, resolveFlavor } from "./palette";
 import type { Palette, PaletteColor } from "./palette";
 import { formatCwd, formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
+
+import type { Component } from "@earendil-works/pi-tui";
+
+export type FooterEnvironment = Readonly<{
+  getThemeName: () => string | undefined;
+  onBranchChange: (callback: () => void) => () => void;
+  requestRender: () => void;
+}>;
 
 const contextWarning = 50;
 const contextCritical = 80;
@@ -129,6 +137,33 @@ function renderModel(snapshot: FooterSnapshot, palette: Palette): string {
     parts.push(`${palette.surface2("•")} ${palette[color](level)}`);
   }
   return parts.join(" ");
+}
+
+export function createStatusFooter(
+  read: () => FooterSnapshot,
+  environment: FooterEnvironment,
+): Component & { dispose: () => void } {
+  let disposed = false;
+  let palette = createPalette(resolveFlavor(environment.getThemeName()));
+  const unsubscribe = environment.onBranchChange(() => {
+    if (!disposed) {
+      environment.requestRender();
+    }
+  });
+  return {
+    dispose() {
+      if (!disposed) {
+        disposed = true;
+        unsubscribe();
+      }
+    },
+    invalidate() {
+      palette = createPalette(resolveFlavor(environment.getThemeName()));
+    },
+    render(width) {
+      return renderStatusLine(read(), palette, width);
+    },
+  };
 }
 
 export function renderStatusLine(

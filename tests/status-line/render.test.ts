@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { renderStatusLine } from "../../src/status-line/render";
+import {
+  createStatusFooter,
+  renderStatusLine,
+} from "../../src/status-line/render";
 import type { FooterSnapshot } from "../../src/status-line/render";
 import { collectUsage } from "../../src/status-line/stats";
 import {
@@ -47,6 +50,37 @@ function snapshot(): FooterSnapshot {
     thinkingLevel: "high",
   };
 }
+
+function noOperation(): void {}
+
+test("rebuilds theme colors and disposes the branch subscription once", () => {
+  let listener = noOperation;
+  let themeName = "catppuccin-mocha";
+  let renders = 0;
+  let disposed = 0;
+  const footer = createStatusFooter(snapshot, {
+    getThemeName: () => themeName,
+    onBranchChange: (handler) => {
+      listener = handler;
+      return () => {
+        disposed += 1;
+      };
+    },
+    requestRender: () => {
+      renders += 1;
+    },
+  });
+  const before = footer.render(wideTerminal).join("");
+  themeName = "catppuccin-latte";
+  footer.invalidate();
+  expect(footer.render(wideTerminal).join("")).not.toBe(before);
+  listener();
+  footer.dispose();
+  footer.dispose();
+  listener();
+  expect(disposed).toBe(1);
+  expect(renders).toBe(1);
+});
 
 test("shows path, branch, session, usage, cache rate, model, and thinking", () => {
   const lines = renderStatusLine(
