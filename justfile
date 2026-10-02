@@ -3,9 +3,9 @@ set shell := ["pwsh", "-NoLogo", "-NoProfile", "-Command"]
 
 set default-list
 
-# Install the locked development toolchain.
+# Install project dependencies.
 install:
-    bun install --frozen-lockfile
+    bun install
 
 # Format project files and recipes.
 # Direct invocation keeps bunx arguments out of formatter child workers.
