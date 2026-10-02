@@ -13,7 +13,11 @@ import type {
   TuiMouseEvent,
   TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
-import { formatModel, formatPromptSizeEstimate } from "./data";
+import {
+  formatModel,
+  formatPromptSizeEstimate,
+  formatPromptSummary,
+} from "./data";
 import { sanitizeForTerminal, sanitizeSingleLine } from "../terminal";
 import type { ContextDumpData } from "./data";
 
@@ -21,7 +25,8 @@ const horizontalPadding = 2;
 const expandedMargin = 4;
 const compactThreshold = 8;
 const compactChrome = 2;
-const fullChrome = 6;
+const fullChrome = 4;
+const helpChrome = 3;
 const percentScale = 100;
 
 type ViewerTheme = Readonly<Pick<Theme, "bold" | "fg">>;
@@ -44,20 +49,17 @@ function renderHeader(
   theme: ViewerTheme,
   width: number,
 ): string {
-  const title = theme.bold(theme.fg("accent", " [System Prompt] "));
+  const title = theme.bold(theme.fg("accent", " System prompt "));
   const thinking =
     data.thinkingLevel === undefined || data.thinkingLevel === ""
       ? ""
       : ` (${sanitizeSingleLine(data.thinkingLevel)})`;
-  const left = title + theme.fg("muted", formatModel(data) + thinking);
-  const right = data.usage
-    ? theme.fg(
-        "dim",
-        `${data.usage.tokens?.toLocaleString() ?? "?"} / ${data.usage.contextWindow.toLocaleString()} tok (${data.usage.percent?.toFixed(1) ?? "?"}%) `,
-      )
-    : "";
-  const padding = Math.max(0, width - visibleWidth(left) - visibleWidth(right));
-  return truncateToWidth(left + " ".repeat(padding) + right, width, "");
+  const right = theme.fg("muted", formatModel(data) + thinking);
+  const padding = Math.max(
+    1,
+    width - visibleWidth(title) - visibleWidth(right),
+  );
+  return truncateToWidth(title + " ".repeat(padding) + right, width, "");
 }
 
 class PromptViewer implements Component {
@@ -67,6 +69,7 @@ class PromptViewer implements Component {
   private readonly data: Readonly<ContextDumpData>;
   private readonly environment: ViewerEnvironment;
   private expanded = false;
+  private showHelp = false;
 
   constructor(data: Readonly<ContextDumpData>, environment: ViewerEnvironment) {
     this.data = data;
@@ -100,6 +103,9 @@ class PromptViewer implements Component {
       environment.close();
     } else if (isKey(input, "f", "shift+f")) {
       this.expanded = !this.expanded;
+      environment.requestRender();
+    } else if (isKey(input, "?")) {
+      this.showHelp = !this.showHelp;
       environment.requestRender();
     } else if (isKey(input, "up", "k")) {
       this.scrollBy(-1);
@@ -144,23 +150,53 @@ class PromptViewer implements Component {
     const { theme } = this.environment;
     const lines = [renderHeader(this.data, theme, width)];
     if (!compact) {
-      lines.push(
-        theme.fg(
-          "dim",
-          `  Prompt ${this.data.promptCharCount.toLocaleString()} chars | ${formatPromptSizeEstimate(this.data)}`,
-        ),
-        theme.fg(
-          "dim",
-          "  Navigate  [Up/Down/j/k] Line  [b/Space] Page  [g/G] Ends",
-        ),
-        theme.fg(
-          "dim",
-          `  Actions   [q/Esc] Close  [f] ${this.expanded ? "Shorter" : "Taller"}  [c] Copy  [d/Enter] Chat`,
-        ),
-        theme.fg("dim", "─".repeat(width)),
-      );
+      lines.push(theme.fg("muted", `  ${formatPromptSummary(this.data)}`));
+      if (this.showHelp) {
+        lines.push(
+          theme.fg("dim", `  ${formatPromptSizeEstimate(this.data)}`),
+          theme.fg("dim", "  Up/Down/j/k line · b/Space page · g/G ends"),
+          theme.fg(
+            "dim",
+            `  Esc/q close · f ${this.expanded ? "shorter" : "taller"} · c copy · d/Enter snapshot`,
+          ),
+        );
+      }
+      lines.push("");
     }
     return lines;
+  }
+
+  private renderFooter(
+    layout: Readonly<{
+      bodyHeight: number;
+      contentHeight: number;
+      width: number;
+    }>,
+    compact: boolean,
+  ): string {
+    const { bodyHeight, contentHeight, width } = layout;
+    const maximum = Math.max(0, contentHeight - bodyHeight);
+    const progress =
+      maximum === 0
+        ? "All"
+        : `${Math.round((this.viewport.scrollTop / maximum) * percentScale)}%`;
+    const position = `Row ${this.viewport.scrollTop + 1}-${Math.min(this.viewport.scrollTop + bodyHeight, contentHeight)} of ${contentHeight} (${progress})`;
+    const actions = compact
+      ? "q close · ? help"
+      : "q close · c copy · Enter snapshot · ? help";
+    const left = truncateToWidth(
+      actions,
+      Math.max(0, width - visibleWidth(position) - 1),
+      "",
+    );
+    const gap = Math.max(
+      1,
+      width - visibleWidth(left) - visibleWidth(position),
+    );
+    return this.environment.theme.fg(
+      "dim",
+      `${left}${" ".repeat(gap)}${position}`,
+    );
   }
 
   render(width: number): string[] {
@@ -177,7 +213,7 @@ class PromptViewer implements Component {
     const compact = targetHeight < compactThreshold;
     const chromeHeight = compact
       ? Math.min(compactChrome, targetHeight - 1)
-      : fullChrome;
+      : fullChrome + (this.showHelp ? helpChrome : 0);
     const bodyHeight = targetHeight - chromeHeight;
     const body = this.viewport.render(width);
     this.viewport.updateLayout(
@@ -196,16 +232,11 @@ class PromptViewer implements Component {
     while (lines.length < targetHeight - 1) {
       lines.push("");
     }
-    const maximum = Math.max(0, body.length - bodyHeight);
-    const progress =
-      maximum === 0
-        ? "All"
-        : `${Math.round((this.viewport.scrollTop / maximum) * percentScale)}%`;
     if (targetHeight > 1) {
       lines.push(
-        this.environment.theme.fg(
-          "dim",
-          ` q close | Row ${this.viewport.scrollTop + 1}-${Math.min(this.viewport.scrollTop + bodyHeight, body.length)} of ${body.length} (${progress}) `,
+        this.renderFooter(
+          { bodyHeight, contentHeight: body.length, width },
+          compact,
         ),
       );
     }

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   copyToClipboard,
   highlightCode,
+  keyText,
 } from "@earendil-works/pi-coding-agent";
 import type {
   ExtensionAPI,
@@ -16,6 +17,7 @@ import {
   collectPromptData,
   formatModel,
   formatPromptSizeEstimate,
+  formatPromptSummary,
   parseContextCommand,
 } from "./data";
 import { sanitizeForTerminal } from "../terminal";
@@ -55,31 +57,25 @@ export function renderContextCard(
   const box = new Box(cardPadding, cardPadding, (text) =>
     theme.bg("customMessageBg", text),
   );
-  const title = theme.fg(
-    "accent",
-    theme.bold("[context] System Prompt Snapshot"),
-  );
+  const title = theme.fg("accent", theme.bold("System prompt snapshot"));
   box.addChild(new Text(title, 0, 0));
-  const tokens = data.usage
-    ? `${data.usage.tokens?.toLocaleString() ?? "unknown"} / ${data.usage.contextWindow.toLocaleString()} tokens`
-    : "unknown tokens";
-  const summary = `Model: ${formatModel(data)} | ${tokens} | Prompt: ${data.promptCharCount.toLocaleString()} chars | ${formatPromptSizeEstimate(data)}`;
+  const summary = `${formatModel(data)} · ${formatPromptSummary(data)}`;
   box.addChild(new Text(theme.fg("muted", summary), 0, 0));
   if (expanded) {
     const safePrompt =
       sanitizeForTerminal(data.systemPrompt) || "(Empty system prompt)";
-    box.addChild(new Text(theme.fg("accent", "\n=== SYSTEM PROMPT ==="), 0, 0));
+    const sizeEstimate = theme.fg("dim", formatPromptSizeEstimate(data));
+    box.addChild(new Text(sizeEstimate, 0, 0));
+    box.addChild(new Text("", 0, 0));
     box.addChild(
       new Text(highlightCode(safePrompt, "markdown").join("\n"), 0, 0),
     );
   } else {
-    box.addChild(
-      new Text(
-        theme.fg("dim", "Press Ctrl+O to expand full system prompt"),
-        0,
-        0,
-      ),
+    const expandHint = theme.fg(
+      "dim",
+      `${keyText("app.tools.expand")} Show prompt`,
     );
+    box.addChild(new Text(expandHint, 0, 0));
   }
   return {
     invalidate: () => box.invalidate(),
@@ -97,7 +93,7 @@ async function copyPrompt(
     await copy(prompt);
     ui.notify("Copied system prompt to clipboard", "info");
   } catch {
-    ui.notify("Failed to copy", "error");
+    ui.notify("Failed to copy system prompt", "error");
   }
 }
 
@@ -146,7 +142,7 @@ async function openViewer(
       close: () => done(),
       copy: async () => copyPrompt(data.systemPrompt, ctx.ui, actions.copy),
       getRows: () => tui.terminal.rows,
-      onError: () => ctx.ui.notify("Failed to copy", "error"),
+      onError: () => ctx.ui.notify("Failed to copy system prompt", "error"),
       requestRender: () => tui.requestRender(),
       theme,
     });
@@ -168,7 +164,7 @@ export async function runContextCommand(
   const data = collectPromptData(ctx);
   function chat(): void {
     api.appendEntry<ContextDumpData>("context-dump", data);
-    ctx.ui.notify("Dumped system prompt card to chat", "info");
+    ctx.ui.notify("Recorded system prompt snapshot", "info");
   }
   switch (command.mode) {
     case "copy": {

@@ -197,7 +197,11 @@ test("expands cards only on request and sanitizes terminal content", () => {
     .render(width)
     .map((line) => stripTerminalSequences(line))
     .join("\n");
+  expect(collapsed).toContain("System prompt snapshot");
+  expect(collapsed).toContain("Show prompt");
+  expect(collapsed).not.toContain("context estimate not recorded");
   expect(collapsed).not.toContain("private prompt");
+  expect(expanded).toContain("context estimate not recorded");
   expect(expanded).toContain("private prompt");
   expect(expanded).not.toContain("\u0007");
 });
