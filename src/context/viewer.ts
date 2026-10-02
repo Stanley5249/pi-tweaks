@@ -13,12 +13,8 @@ import type {
   TuiMouseEvent,
   TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
-import {
-  formatModel,
-  formatPromptSizeEstimate,
-  sanitizeForTerminal,
-  sanitizeSingleLine,
-} from "./data";
+import { formatModel, formatPromptSizeEstimate } from "./data";
+import { sanitizeForTerminal, sanitizeSingleLine } from "../terminal";
 import type { ContextDumpData } from "./data";
 
 const horizontalPadding = 2;

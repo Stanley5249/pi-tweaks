@@ -4,8 +4,6 @@ import {
   formatModel,
   formatPromptSizeEstimate,
   parseContextCommand,
-  sanitizeForTerminal,
-  sanitizeSingleLine,
 } from "../../src/context/data";
 import type { PromptSource } from "../../src/context/data";
 
@@ -87,13 +85,7 @@ test("labels character-based token counts as an estimate", () => {
   ).toBe("context estimate not recorded");
 });
 
-test("removes terminal controls without discarding Chinese or line breaks", () => {
-  expect(
-    sanitizeForTerminal(
-      "\u001B[31m中文\u001B[0m\r\n下一行\t內容\u0000\u0007\u007F\u0085",
-    ),
-  ).toBe("中文\n下一行   內容");
-  expect(sanitizeSingleLine("model\r\nname")).toBe("model name");
+test("sanitizes model metadata before rendering", () => {
   expect(
     formatModel({
       model: "\u001B[31mmodel\u001B[0m",

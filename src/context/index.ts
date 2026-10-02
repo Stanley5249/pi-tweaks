@@ -17,8 +17,8 @@ import {
   formatModel,
   formatPromptSizeEstimate,
   parseContextCommand,
-  sanitizeForTerminal,
 } from "./data";
+import { sanitizeForTerminal } from "../terminal";
 import type { ContextDumpData, PromptSource } from "./data";
 import { createPromptViewer } from "./viewer";
 

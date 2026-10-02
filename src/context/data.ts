@@ -2,7 +2,7 @@ import type {
   BuildSystemPromptOptions,
   ContextUsage,
 } from "@earendil-works/pi-coding-agent";
-import { stripTerminalSequences } from "@earendil-works/pi-tui";
+import { sanitizeSingleLine } from "../terminal";
 
 const charsPerToken = 4;
 
@@ -92,22 +92,6 @@ export function formatPromptSizeEstimate(
   }
   const roughTokens = Math.ceil(base / charsPerToken);
   return `excluding raw context bodies ~${base.toLocaleString()} chars (~${roughTokens.toLocaleString()} tokens, chars/4) | raw context bodies ${context.toLocaleString()} chars`;
-}
-
-export function sanitizeForTerminal(text: string): string {
-  const normalized = stripTerminalSequences(text)
-    .replaceAll("\r\n", "\n")
-    .replaceAll("\r", "\n")
-    .replaceAll("\t", "   ");
-  return Array.from(normalized, (character) => {
-    const isControl =
-      character < " " || (character >= "\u007F" && character <= "\u009F");
-    return isControl && character !== "\n" ? "" : character;
-  }).join("");
-}
-
-export function sanitizeSingleLine(text: string): string {
-  return sanitizeForTerminal(text).replaceAll("\n", " ");
 }
 
 export function formatModel(data: Readonly<ContextDumpData>): string {
