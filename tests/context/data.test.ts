@@ -3,6 +3,7 @@ import {
   collectPromptData,
   formatModel,
   formatPromptSizeEstimate,
+  parseContextCommand,
   sanitizeForTerminal,
   sanitizeSingleLine,
 } from "../../src/context/data";
@@ -19,6 +20,23 @@ function source(): PromptSource {
     thinkingLevel: "high",
   };
 }
+
+test("parses context actions and save paths", () => {
+  expect(parseContextCommand("")).toEqual({ mode: "view" });
+  expect(parseContextCommand(" VIEW ")).toEqual({ mode: "view" });
+  expect(parseContextCommand("copy")).toEqual({ mode: "copy" });
+  expect(parseContextCommand("chat")).toEqual({ mode: "chat" });
+  expect(parseContextCommand("save")).toEqual({
+    file: "system-prompt.md",
+    mode: "save",
+  });
+  expect(parseContextCommand("save nested/prompt snapshot.md")).toEqual({
+    file: "nested/prompt snapshot.md",
+    mode: "save",
+  });
+  expect(parseContextCommand("unknown")).toBeUndefined();
+  expect(parseContextCommand("view unexpected")).toBeUndefined();
+});
 
 test("captures the exact prompt and separates raw context file bodies", () => {
   expect(collectPromptData(source())).toEqual({

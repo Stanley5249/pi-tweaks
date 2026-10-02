@@ -17,6 +17,32 @@ export type ContextDumpData = {
   usage?: Readonly<ContextUsage> | undefined;
 };
 
+export type ContextCommand =
+  | Readonly<{ mode: "chat" | "copy" | "view" }>
+  | Readonly<{ file: string; mode: "save" }>;
+
+export function parseContextCommand(input: string): ContextCommand | undefined {
+  const [command = "", ...rest] = input.trim().split(/\s+/u);
+  switch (command.toLowerCase()) {
+    case "save": {
+      return { file: rest.join(" ") || "system-prompt.md", mode: "save" };
+    }
+    case "":
+    case "view": {
+      return rest.length === 0 ? { mode: "view" } : undefined;
+    }
+    case "chat": {
+      return rest.length === 0 ? { mode: "chat" } : undefined;
+    }
+    case "copy": {
+      return rest.length === 0 ? { mode: "copy" } : undefined;
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
 export type PromptSource = {
   getContextUsage: () => ContextUsage | undefined;
   getSystemPrompt: () => string;
