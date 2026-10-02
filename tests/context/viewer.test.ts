@@ -10,6 +10,8 @@ const lineCount = 40;
 const normalWidth = 80;
 const narrowWidth = 2;
 const compactHeight = 8;
+const bodyAndFooterRows = 4;
+const bodyAndHeaderRows = 6;
 
 function fixture(prompt = "", rows = defaultRows) {
   const state = {
@@ -60,6 +62,18 @@ test("keeps narrow and Chinese content within the terminal dimensions", () => {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
       }
     }
+  }
+});
+
+test("keeps prompt content visible even when chrome must be omitted", () => {
+  for (const rows of [1, narrowWidth, bodyAndFooterRows, bodyAndHeaderRows]) {
+    const { viewer } = fixture("PROMPT BODY", rows);
+    const text = viewer
+      .render(normalWidth)
+      .map((line) => stripTerminalSequences(line))
+      .join("\n");
+    expect(text).toContain("PROMPT BODY");
+    expect(text).not.toContain("Row 1-0");
   }
 });
 

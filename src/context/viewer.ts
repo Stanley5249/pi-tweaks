@@ -175,17 +175,18 @@ class PromptViewer implements Component {
       ),
     );
     const compact = targetHeight < compactThreshold;
-    const bodyHeight = Math.max(
-      0,
-      targetHeight - (compact ? compactChrome : fullChrome),
-    );
+    const chromeHeight = compact
+      ? Math.min(compactChrome, targetHeight - 1)
+      : fullChrome;
+    const bodyHeight = targetHeight - chromeHeight;
     const body = this.viewport.render(width);
     this.viewport.updateLayout(
       body.length,
       bodyHeight,
       this.environment.requestRender,
     );
-    const lines = this.renderChrome(width, compact);
+    const lines =
+      targetHeight <= compactChrome ? [] : this.renderChrome(width, compact);
     lines.push(
       ...body.slice(
         this.viewport.scrollTop,
@@ -200,12 +201,14 @@ class PromptViewer implements Component {
       maximum === 0
         ? "All"
         : `${Math.round((this.viewport.scrollTop / maximum) * percentScale)}%`;
-    lines.push(
-      this.environment.theme.fg(
-        "dim",
-        ` q close | Row ${this.viewport.scrollTop + 1}-${Math.min(this.viewport.scrollTop + bodyHeight, body.length)} of ${body.length} (${progress}) `,
-      ),
-    );
+    if (targetHeight > 1) {
+      lines.push(
+        this.environment.theme.fg(
+          "dim",
+          ` q close | Row ${this.viewport.scrollTop + 1}-${Math.min(this.viewport.scrollTop + bodyHeight, body.length)} of ${body.length} (${progress}) `,
+        ),
+      );
+    }
     return lines
       .slice(0, targetHeight)
       .map((line) => truncateToWidth(line, width, ""));
