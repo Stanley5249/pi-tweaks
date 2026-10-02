@@ -8,6 +8,9 @@
     "extensions": [
       "./src/context/index.ts",
       "./src/statusline/index.ts"
+    ],
+    "themes": [
+      "./src/statusline/themes/*.json"
     ]
   },
   "peerDependencies": {
