@@ -8,19 +8,18 @@ install:
     bun install
 
 # Format project files and recipes.
-# Direct invocation keeps bunx arguments out of formatter child workers.
 fmt:
     just --fmt
-    bun node_modules/oxfmt/bin/oxfmt
+    bunx oxfmt
 
 # Verify formatting without rewriting files.
 fmt-check:
     just --fmt --check
-    bun node_modules/oxfmt/bin/oxfmt --check
+    bunx oxfmt --check
 
 # Run strict lint and type checking through Oxc.
 lint:
-    bun node_modules/oxlint/bin/oxlint .
+    bunx oxlint src tests
 
 # Run the source-preserving static gate.
 check: lint
