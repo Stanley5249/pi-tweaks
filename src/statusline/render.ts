@@ -1,34 +1,21 @@
-import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+import type { ContextUsage, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
-import { bold, createPalette, resolveFlavor } from "./palette";
-import type { Palette, PaletteColor } from "./palette";
+import type { FooterTheme } from "./palette";
 import { formatCwd, formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
 
-import type { Component } from "@earendil-works/pi-tui";
-
 export type FooterEnvironment = Readonly<{
-  getThemeName: () => string | undefined;
   onBranchChange: (callback: () => void) => () => void;
   requestRender: () => void;
+  theme: FooterTheme;
 }>;
 
 const contextWarning = 50;
 const contextCritical = 80;
-const goodCacheHit = 70;
-const moderateCacheHit = 30;
 const costPrecision = 3;
 const minimumGap = 2;
-const thinkingColors: Readonly<Record<string, PaletteColor>> = {
-  high: "mauve",
-  low: "blue",
-  max: "red",
-  medium: "lavender",
-  minimal: "teal",
-  off: "surface2",
-  xhigh: "peach",
-};
 
 export type StatusModel = Readonly<{
   contextWindow: number;
@@ -48,42 +35,32 @@ export type FooterSnapshot = Readonly<{
   thinkingLevel?: string | undefined;
 }>;
 
-function cacheColor(rate: number): PaletteColor {
-  if (rate >= goodCacheHit) {
-    return "green";
-  }
-  if (rate >= moderateCacheHit) {
-    return "yellow";
-  }
-  return "subtext0";
-}
-
-function contextColor(percent: number): PaletteColor {
+function contextColor(percent: number): ThemeColor {
   if (percent >= contextCritical) {
-    return "red";
+    return "error";
   }
   if (percent >= contextWarning) {
-    return "peach";
+    return "warning";
   }
-  return "teal";
+  return "muted";
 }
 
 function renderTop(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
   width: number,
 ): string {
   const cwd = sanitizeSingleLine(formatCwd(snapshot.cwd, snapshot.home));
   const branch = sanitizeSingleLine(snapshot.branch ?? "");
   const session = sanitizeSingleLine(snapshot.sessionName ?? "");
-  const branchText = branch === "" ? "" : palette.mauve(bold(`(${branch})`));
+  const branchText = branch === "" ? "" : theme.fg("muted", `(${branch})`);
   const pathWidth = Math.max(
     0,
     width - visibleWidth(branchText) - (branchText === "" ? 0 : 1),
   );
-  const path = palette.blue(bold(truncateToWidth(cwd, pathWidth)));
+  const path = theme.fg("muted", truncateToWidth(cwd, pathWidth));
   const parts = [path, branchText].filter((part) => part !== "");
-  const sessionText = `${palette.surface2("•")} ${palette.peach(bold(session))}`;
+  const sessionText = theme.fg("muted", `· ${session}`);
   if (
     session !== "" &&
     visibleWidth([...parts, sessionText].join(" ")) <= width
@@ -93,32 +70,26 @@ function renderTop(
   return parts.join(" ");
 }
 
-function renderStats(snapshot: FooterSnapshot, palette: Palette): string[] {
+function renderStats(snapshot: FooterSnapshot, theme: FooterTheme): string[] {
   const { stats } = snapshot;
   const parts: string[] = [];
   if (stats.cost > 0) {
-    parts.push(
-      `${palette.subtext0("$")}${palette.yellow(stats.cost.toFixed(costPrecision))}`,
-    );
+    parts.push(theme.fg("muted", `$${stats.cost.toFixed(costPrecision)}`));
   }
-  const counts: readonly (readonly [string, number, PaletteColor])[] = [
-    ["in", stats.input, "sky"],
-    ["out", stats.output, "teal"],
-  ];
-  for (const [label, count, color] of counts) {
+  for (const [label, count] of [
+    ["in", stats.input],
+    ["out", stats.output],
+  ] as const) {
     if (count > 0) {
-      parts.push(
-        `${palette.subtext0(label)} ${palette[color](formatTokens(count))}`,
-      );
+      parts.push(theme.fg("muted", `${label} ${formatTokens(count)}`));
     }
   }
   if (
     (stats.cacheRead > 0 || stats.cacheWrite > 0) &&
     stats.latestCacheHitRate !== undefined
   ) {
-    const rate = stats.latestCacheHitRate;
     parts.push(
-      `${palette.subtext0("hit")} ${palette[cacheColor(rate)](`${rate.toFixed(0)}%`)}`,
+      theme.fg("muted", `hit ${stats.latestCacheHitRate.toFixed(0)}%`),
     );
   }
   for (const [label, count] of [
@@ -126,9 +97,7 @@ function renderStats(snapshot: FooterSnapshot, palette: Palette): string[] {
     ["write", stats.cacheWrite],
   ] as const) {
     if (count > 0) {
-      parts.push(
-        `${palette.subtext0(label)} ${palette.subtext1(formatTokens(count))}`,
-      );
+      parts.push(theme.fg("muted", `${label} ${formatTokens(count)}`));
     }
   }
   return parts;
@@ -136,35 +105,37 @@ function renderStats(snapshot: FooterSnapshot, palette: Palette): string[] {
 
 function renderContext(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
 ): readonly [string, string] {
   const percent = snapshot.contextUsage?.percent;
   const display =
     percent === undefined || percent === null ? "?" : `${percent.toFixed(0)}%`;
   const window =
     snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow ?? 0;
-  const compact = `${palette.subtext0("ctx")} ${palette[contextColor(percent ?? 0)](display)}`;
-  return [`${compact}${palette.overlay1(`/${formatTokens(window)}`)}`, compact];
+  const compact = `${theme.fg("muted", "ctx")} ${theme.fg(contextColor(percent ?? 0), display)}`;
+  return [
+    `${compact}${theme.fg("muted", `/${formatTokens(window)}`)}`,
+    compact,
+  ];
 }
 
 function renderModel(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
 ): readonly string[] {
   const model = sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model";
   const provider = sanitizeSingleLine(snapshot.model?.provider ?? "");
-  const name = palette.lavender(bold(model));
+  const name = theme.bold(theme.fg("accent", model));
   const parts = [name];
   if (snapshot.model?.reasoning === true) {
     const level = sanitizeSingleLine(snapshot.thinkingLevel ?? "off");
-    const color = thinkingColors[level] ?? "red";
-    parts.push(`${palette.surface2("•")} ${palette[color](level)}`);
+    parts.push(theme.fg("muted", `· ${level}`));
   }
   const thinking = parts.join(" ");
   const full =
     provider === ""
       ? thinking
-      : `${palette.overlay1(`(${provider})`)} ${thinking}`;
+      : `${theme.fg("muted", `(${provider})`)} ${thinking}`;
   return [full, thinking, name];
 }
 
@@ -178,12 +149,12 @@ function joinSides(left: string, right: string, width: number): string {
 
 function renderUsageRow(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
   width: number,
 ): string {
-  const models = renderModel(snapshot, palette);
+  const models = renderModel(snapshot, theme);
   const name = models.at(-1) ?? "";
-  const contexts = renderContext(snapshot, palette);
+  const contexts = renderContext(snapshot, theme);
   const context =
     contexts.find(
       (text) => visibleWidth(name) + minimumGap + visibleWidth(text) <= width,
@@ -194,8 +165,8 @@ function renderUsageRow(
   const model =
     models.find((text) => visibleWidth(text) <= modelWidth) ??
     truncateToWidth(name, modelWidth);
-  const stats = renderStats(snapshot, palette);
-  const separator = ` ${palette.surface2("•")} `;
+  const stats = renderStats(snapshot, theme);
+  const separator = theme.fg("dim", " · ");
   while (
     stats.length > 0 &&
     visibleWidth(model) +
@@ -205,8 +176,7 @@ function renderUsageRow(
   ) {
     stats.pop();
   }
-  const right = [...stats, context].join(separator);
-  return joinSides(model, right, width);
+  return joinSides(model, [...stats, context].join(separator), width);
 }
 
 export function createStatusFooter(
@@ -214,7 +184,6 @@ export function createStatusFooter(
   environment: FooterEnvironment,
 ): Component & { dispose: () => void } {
   let disposed = false;
-  let palette = createPalette(resolveFlavor(environment.getThemeName()));
   const unsubscribe = environment.onBranchChange(() => {
     if (!disposed) {
       environment.requestRender();
@@ -227,27 +196,28 @@ export function createStatusFooter(
         unsubscribe();
       }
     },
-    invalidate() {
-      palette = createPalette(resolveFlavor(environment.getThemeName()));
-    },
+    // Theme helpers are evaluated on render, so no styled strings are cached.
+    invalidate() {},
     render(width) {
-      return renderStatusLine(read(), palette, width);
+      return renderStatusLine(read(), environment.theme, width);
     },
   };
 }
 
 export function renderStatusLine(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
   width: number,
 ): string[] {
-  const top = renderTop(snapshot, palette, width);
-  const lines = [top, renderUsageRow(snapshot, palette, width)];
+  const lines = [
+    renderTop(snapshot, theme, width),
+    renderUsageRow(snapshot, theme, width),
+  ];
   if (snapshot.statuses.length > 0) {
     const statuses = snapshot.statuses
       .map((text) => sanitizeSingleLine(text))
       .join(" ");
-    lines.push(palette.subtext1(statuses));
+    lines.push(theme.fg("muted", statuses));
   }
   return lines.map((line) => truncateToWidth(line, width));
 }
