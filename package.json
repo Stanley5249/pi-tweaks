@@ -2,20 +2,10 @@
   "name": "pi-tweaks",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Personal Pi extensions for context inspection and status display.",
-  "pi": {
-    "extensions": [
-      "./src/context/index.ts",
-      "./src/statusline/index.ts"
-    ],
-    "themes": [
-      "./src/statusline/themes/*.json"
-    ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+  "type": "module",
+  "dependencies": {
+    "@catppuccin/palette": "1.8.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.0.0",
@@ -25,7 +15,17 @@
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003"
   },
-  "dependencies": {
-    "@catppuccin/palette": "1.8.0"
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/context/index.ts",
+      "./src/statusline/index.ts"
+    ],
+    "themes": [
+      "./src/statusline/themes/*.json"
+    ]
   }
 }
