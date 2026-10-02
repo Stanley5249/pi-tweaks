@@ -68,28 +68,42 @@ function contextColor(percent: number): PaletteColor {
   return "teal";
 }
 
-function renderTop(snapshot: FooterSnapshot, palette: Palette): string {
+function renderTop(
+  snapshot: FooterSnapshot,
+  palette: Palette,
+  width: number,
+): string {
   const cwd = sanitizeSingleLine(formatCwd(snapshot.cwd, snapshot.home));
   const branch = sanitizeSingleLine(snapshot.branch ?? "");
   const session = sanitizeSingleLine(snapshot.sessionName ?? "");
-  const parts = [palette.blue(bold(cwd))];
-  if (branch !== "") {
-    parts.push(palette.mauve(bold(`(${branch})`)));
-  }
-  if (session !== "") {
-    parts.push(`${palette.surface2("•")} ${palette.peach(bold(session))}`);
+  const branchText = branch === "" ? "" : palette.mauve(bold(`(${branch})`));
+  const pathWidth = Math.max(
+    0,
+    width - visibleWidth(branchText) - (branchText === "" ? 0 : 1),
+  );
+  const path = palette.blue(bold(truncateToWidth(cwd, pathWidth)));
+  const parts = [path, branchText].filter((part) => part !== "");
+  const sessionText = `${palette.surface2("•")} ${palette.peach(bold(session))}`;
+  if (
+    session !== "" &&
+    visibleWidth([...parts, sessionText].join(" ")) <= width
+  ) {
+    parts.push(sessionText);
   }
   return parts.join(" ");
 }
 
-function renderStats(snapshot: FooterSnapshot, palette: Palette): string {
+function renderStats(snapshot: FooterSnapshot, palette: Palette): string[] {
   const { stats } = snapshot;
   const parts: string[] = [];
+  if (stats.cost > 0) {
+    parts.push(
+      `${palette.subtext0("$")}${palette.yellow(stats.cost.toFixed(costPrecision))}`,
+    );
+  }
   const counts: readonly (readonly [string, number, PaletteColor])[] = [
     ["in", stats.input, "sky"],
     ["out", stats.output, "teal"],
-    ["read", stats.cacheRead, "green"],
-    ["write", stats.cacheWrite, "peach"],
   ];
   for (const [label, count, color] of counts) {
     if (count > 0) {
@@ -107,36 +121,92 @@ function renderStats(snapshot: FooterSnapshot, palette: Palette): string {
       `${palette.subtext0("hit")} ${palette[cacheColor(rate)](`${rate.toFixed(0)}%`)}`,
     );
   }
-  if (stats.cost > 0) {
-    parts.push(
-      `${palette.subtext0("$")}${palette.yellow(stats.cost.toFixed(costPrecision))}`,
-    );
+  for (const [label, count] of [
+    ["read", stats.cacheRead],
+    ["write", stats.cacheWrite],
+  ] as const) {
+    if (count > 0) {
+      parts.push(
+        `${palette.subtext0(label)} ${palette.subtext1(formatTokens(count))}`,
+      );
+    }
   }
+  return parts;
+}
+
+function renderContext(
+  snapshot: FooterSnapshot,
+  palette: Palette,
+): readonly [string, string] {
   const percent = snapshot.contextUsage?.percent;
   const display =
     percent === undefined || percent === null ? "?" : `${percent.toFixed(0)}%`;
   const window =
     snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow ?? 0;
-  parts.push(
-    `${palette.subtext0("ctx")} ${palette[contextColor(percent ?? 0)](display)}${palette.overlay1(`/${formatTokens(window)}`)}`,
-  );
-  return parts.join(` ${palette.surface2("•")} `);
+  const compact = `${palette.subtext0("ctx")} ${palette[contextColor(percent ?? 0)](display)}`;
+  return [`${compact}${palette.overlay1(`/${formatTokens(window)}`)}`, compact];
 }
 
-function renderModel(snapshot: FooterSnapshot, palette: Palette): string {
+function renderModel(
+  snapshot: FooterSnapshot,
+  palette: Palette,
+): readonly string[] {
   const model = sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model";
   const provider = sanitizeSingleLine(snapshot.model?.provider ?? "");
-  const parts: string[] = [];
-  if (provider !== "") {
-    parts.push(palette.overlay1(`(${provider})`));
-  }
-  parts.push(palette.lavender(bold(model)));
+  const name = palette.lavender(bold(model));
+  const parts = [name];
   if (snapshot.model?.reasoning === true) {
     const level = sanitizeSingleLine(snapshot.thinkingLevel ?? "off");
     const color = thinkingColors[level] ?? "red";
     parts.push(`${palette.surface2("•")} ${palette[color](level)}`);
   }
-  return parts.join(" ");
+  const thinking = parts.join(" ");
+  const full =
+    provider === ""
+      ? thinking
+      : `${palette.overlay1(`(${provider})`)} ${thinking}`;
+  return [full, thinking, name];
+}
+
+function joinSides(left: string, right: string, width: number): string {
+  const gap = Math.max(
+    minimumGap,
+    width - visibleWidth(left) - visibleWidth(right),
+  );
+  return truncateToWidth(`${left}${" ".repeat(gap)}${right}`, width);
+}
+
+function renderUsageRow(
+  snapshot: FooterSnapshot,
+  palette: Palette,
+  width: number,
+): string {
+  const models = renderModel(snapshot, palette);
+  const name = models.at(-1) ?? "";
+  const contexts = renderContext(snapshot, palette);
+  const context =
+    contexts.find(
+      (text) => visibleWidth(name) + minimumGap + visibleWidth(text) <= width,
+    ) ??
+    contexts.at(-1) ??
+    "";
+  const modelWidth = Math.max(0, width - visibleWidth(context) - minimumGap);
+  const model =
+    models.find((text) => visibleWidth(text) <= modelWidth) ??
+    truncateToWidth(name, modelWidth);
+  const stats = renderStats(snapshot, palette);
+  const separator = ` ${palette.surface2("•")} `;
+  while (
+    stats.length > 0 &&
+    visibleWidth(model) +
+      minimumGap +
+      visibleWidth([...stats, context].join(separator)) >
+      width
+  ) {
+    stats.pop();
+  }
+  const right = [...stats, context].join(separator);
+  return joinSides(model, right, width);
 }
 
 export function createStatusFooter(
@@ -171,14 +241,8 @@ export function renderStatusLine(
   palette: Palette,
   width: number,
 ): string[] {
-  const top = renderTop(snapshot, palette);
-  const left = renderStats(snapshot, palette);
-  const right = renderModel(snapshot, palette);
-  const gap = Math.max(
-    minimumGap,
-    width - visibleWidth(left) - visibleWidth(right),
-  );
-  const lines = [top, `${left}${" ".repeat(gap)}${right}`];
+  const top = renderTop(snapshot, palette, width);
+  const lines = [top, renderUsageRow(snapshot, palette, width)];
   if (snapshot.statuses.length > 0) {
     const statuses = snapshot.statuses
       .map((text) => sanitizeSingleLine(text))

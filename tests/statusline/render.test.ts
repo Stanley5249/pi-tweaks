@@ -19,6 +19,9 @@ const contextPercent = 25;
 const testCost = 0.125;
 const wideTerminal = 200;
 const compactWidth = 8;
+const normalWidth = 80;
+const narrowWidth = 24;
+const pathWidth = 32;
 
 function snapshot(): FooterSnapshot {
   return {
@@ -97,6 +100,49 @@ test("shows path, branch, session, usage, cache rate, model, and thinking", () =
   expect(text).toContain("ctx 25%/128k");
   expect(text).toContain("(provider) model");
   expect(text).toContain("high");
+});
+
+test("preserves model and context before secondary metrics", () => {
+  const data = {
+    ...snapshot(),
+    model: {
+      contextWindow,
+      id: "gemini-3-pro",
+      provider: "google-antigravity",
+      reasoning: true,
+    },
+    stats: {
+      ...snapshot().stats,
+      cacheRead: 300_000,
+      cacheWrite: 120_000,
+      input: 120_000,
+    },
+  };
+  const normal = stripTerminalSequences(
+    renderStatusLine(data, createPalette("mocha"), normalWidth).at(1) ?? "",
+  );
+  expect(normal).toContain("gemini-3-pro");
+  expect(normal).toContain("ctx 25%/128k");
+  expect(normal).not.toContain("read ");
+  const narrow = stripTerminalSequences(
+    renderStatusLine(data, createPalette("mocha"), narrowWidth).at(1) ?? "",
+  );
+  expect(narrow).toContain("gemini-3-pro");
+  expect(narrow).toContain("ctx 25%");
+  expect(narrow).not.toContain("high");
+  expect(narrow).not.toContain("hit ");
+});
+
+test("shortens long paths before hiding the branch", () => {
+  const data = {
+    ...snapshot(),
+    cwd: "a/very/long/path/that/would/otherwise/hide/the/branch",
+  };
+  const top = stripTerminalSequences(
+    renderStatusLine(data, createPalette("mocha"), pathWidth).at(0) ?? "",
+  );
+  expect(top).toContain("(main)");
+  expect(top).not.toContain("session");
 });
 
 test("bounds narrow and Chinese footer rows", () => {
