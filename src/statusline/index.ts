@@ -118,7 +118,7 @@ export async function selectFlavor(
     return;
   }
   let target = args.trim().toLowerCase();
-  if (!isFlavor(target)) {
+  if (target === "") {
     const choice = await ctx.ui.select("Select Catppuccin Flavor:", [
       "Mocha (Dark)",
       "Macchiato (Dark)",

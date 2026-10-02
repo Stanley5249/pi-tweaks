@@ -93,8 +93,16 @@ test("selects a flavor interactively and handles cancellation", async () => {
   await selectFlavor("", ctx);
   expect(state.themes).toEqual(["catppuccin-latte"]);
   state.choice = undefined;
-  await selectFlavor("invalid", ctx);
+  await selectFlavor("", ctx);
   expect(state.themes).toEqual(["catppuccin-latte"]);
+});
+
+test("rejects explicit invalid flavors without opening a dialog", async () => {
+  const { ctx, state } = fixture();
+  await selectFlavor("invalid", ctx);
+  expect(state.selected).toBe(false);
+  expect(state.themes).toHaveLength(0);
+  expect(state.notifications.at(-1)?.type).toBe("error");
 });
 
 test("reports an unavailable theme", async () => {
