@@ -20,5 +20,8 @@
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003"
+  },
+  "dependencies": {
+    "@catppuccin/palette": "1.8.0"
   }
 }
