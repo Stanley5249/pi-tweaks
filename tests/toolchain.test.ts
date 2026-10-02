@@ -23,7 +23,6 @@ async function lint(
     const child = Bun.spawn(
       [
         process.execPath,
-        "--bun",
         join(root, "node_modules/oxlint/bin/oxlint"),
         "--config",
         join(root, ".oxlintrc.json"),
