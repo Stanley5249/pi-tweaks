@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import config from "../.oxlintrc.json";
+import zed from "../.zed/settings.json";
 
 const root = resolve(import.meta.dir, "..");
 const successfulExit = 0;
@@ -71,6 +72,24 @@ test("rejects TypeScript compiler errors", async () => {
   const result = await lint('export const answer: number = "wrong";\n');
   expect(result.exitCode).not.toBe(successfulExit);
   expect(result.output).toContain("TS2322");
+});
+
+test("retains TypeScript navigation and uses Oxc for lint and format", () => {
+  expect(zed.prettier.allowed).toBe(false);
+  expect(zed.format_on_save).toBe("on");
+  expect(zed.languages.TypeScript.language_servers).toEqual([
+    "vtsls",
+    "oxlint",
+    "oxfmt",
+  ]);
+  expect(zed.languages.JavaScript.language_servers).toEqual([
+    "vtsls",
+    "oxlint",
+    "oxfmt",
+  ]);
+  for (const language of Object.values(zed.languages)) {
+    expect(language.formatter.language_server.name).toBe("oxfmt");
+  }
 });
 
 test("rejects unused lint suppressions", async () => {
