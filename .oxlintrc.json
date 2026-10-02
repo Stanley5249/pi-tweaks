@@ -1,0 +1,65 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "promise",
+    "node"
+  ],
+  "env": {
+    "node": true
+  },
+  "options": {
+    "typeAware": true,
+    "typeCheck": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error",
+    "respectEslintDisableDirectives": false
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "one-var": ["error", "never"],
+    "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "import/no-nodejs-modules": "off",
+    "import/no-named-export": "off",
+    "import/prefer-default-export": "off",
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/restrict-template-expressions": [
+      "error",
+      {
+        "allowNumber": true
+      }
+    ],
+    "typescript/no-confusing-void-expression": [
+      "error",
+      {
+        "ignoreArrowShorthand": true
+      }
+    ],
+    "typescript/require-await": "off",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/promise-function-async": "error",
+    "typescript/explicit-module-boundary-types": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/method-signature-style": ["error", "property"],
+    "no-console": "error",
+    "no-var": "error",
+    "eqeqeq": ["error", "always"],
+    "import/no-cycle": "error",
+    "import/no-commonjs": "error",
+    "unicorn/no-anonymous-default-export": "error"
+  }
+}

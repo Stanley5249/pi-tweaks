@@ -1,0 +1,2 @@
+* text=auto eol=lf
+bun.lock merge=binary linguist-language=JSON linguist-generated=true -diff
