@@ -53,7 +53,7 @@ export type PromptSource = {
     contextFiles?: readonly Readonly<{ content: string }>[];
   };
   model?: Readonly<{ id: string; provider: string }> | undefined;
-  thinkingLevel: string;
+  thinkingLevel?: string | undefined;
 };
 
 export function collectPromptData(

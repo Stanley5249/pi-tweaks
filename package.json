@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "description": "Personal Pi extensions for context, scrolling, and status display.",
+  "pi": {
+    "extensions": [
+      "./src/context/index.ts"
+    ]
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"

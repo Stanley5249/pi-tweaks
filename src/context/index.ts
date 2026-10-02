@@ -1,16 +1,48 @@
-import { highlightCode } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import {
+  copyToClipboard,
+  highlightCode,
+} from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionUIContext,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
 import { Box, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import {
+  collectPromptData,
   formatModel,
   formatPromptSizeEstimate,
+  parseContextCommand,
   sanitizeForTerminal,
 } from "./data";
-import type { ContextDumpData } from "./data";
+import type { ContextDumpData, PromptSource } from "./data";
+import { createPromptViewer } from "./viewer";
 
 const cardPadding = 1;
+const usage = "Usage: /context [view|chat|copy|save [file]]";
+type Clipboard = (text: string) => Promise<void>;
+type CommandEffects = Readonly<
+  Pick<ExtensionAPI, "appendEntry"> & {
+    copy?: Clipboard;
+  }
+>;
 type CardTheme = Readonly<Pick<Theme, "bg" | "bold" | "fg">>;
+export type ContextAPI = Readonly<
+  Pick<
+    ExtensionAPI,
+    "appendEntry" | "registerCommand" | "registerEntryRenderer"
+  >
+>;
+export type ContextCommandSource = Readonly<
+  PromptSource &
+    Pick<ExtensionCommandContext, "cwd" | "mode"> & {
+      ui: Readonly<Pick<ExtensionUIContext, "custom" | "notify">>;
+    }
+>;
 
 export function renderContextCard(
   data: Readonly<ContextDumpData> | undefined,
@@ -54,4 +86,116 @@ export function renderContextCard(
     render: (width) =>
       box.render(width).map((line) => truncateToWidth(line, width, "")),
   };
+}
+
+async function copyPrompt(
+  prompt: string,
+  ui: Readonly<Pick<ExtensionUIContext, "notify">>,
+  copy: Clipboard,
+): Promise<void> {
+  try {
+    await copy(prompt);
+    ui.notify("Copied system prompt to clipboard", "info");
+  } catch {
+    ui.notify("Failed to copy", "error");
+  }
+}
+
+async function savePrompt(
+  prompt: string,
+  file: string,
+  ctx: ContextCommandSource,
+): Promise<void> {
+  try {
+    await writeFile(resolve(ctx.cwd, file), prompt, "utf8");
+    ctx.ui.notify(`Saved system prompt to ${file}`, "info");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    ctx.ui.notify(`Failed to save system prompt: ${message}`, "error");
+  }
+}
+
+async function openViewer(
+  data: Readonly<ContextDumpData>,
+  ctx: ContextCommandSource,
+  actions: Readonly<{ chat: () => void; copy: Clipboard }>,
+): Promise<void> {
+  // oxlint-disable-next-line max-params -- Pi requires four UI factory arguments.
+  function factory(
+    tui: Readonly<{
+      requestRender: () => void;
+      terminal: Readonly<{ rows: number }>;
+    }>,
+    theme: Readonly<Pick<Theme, "bold" | "fg">>,
+    _keybindings: unknown,
+    done: () => void,
+  ): Component {
+    return createPromptViewer(data, {
+      chat: actions.chat,
+      close: () => done(),
+      copy: async () => copyPrompt(data.systemPrompt, ctx.ui, actions.copy),
+      getRows: () => tui.terminal.rows,
+      onError: () => ctx.ui.notify("Failed to copy", "error"),
+      requestRender: () => tui.requestRender(),
+      theme,
+    });
+  }
+  await ctx.ui.custom<void>(factory);
+}
+
+export async function runContextCommand(
+  args: string,
+  ctx: ContextCommandSource,
+  api: CommandEffects,
+): Promise<void> {
+  const copy = api.copy ?? copyToClipboard;
+  const command = parseContextCommand(args);
+  if (command === undefined) {
+    ctx.ui.notify(usage, "error");
+    return;
+  }
+  const data = collectPromptData(ctx);
+  function chat(): void {
+    api.appendEntry<ContextDumpData>("context-dump", data);
+    ctx.ui.notify("Dumped system prompt card to chat", "info");
+  }
+  switch (command.mode) {
+    case "copy": {
+      await copyPrompt(data.systemPrompt, ctx.ui, copy);
+      break;
+    }
+    case "save": {
+      await savePrompt(data.systemPrompt, command.file, ctx);
+      break;
+    }
+    case "chat": {
+      chat();
+      break;
+    }
+    case "view": {
+      if (ctx.mode === "tui") {
+        await openViewer(data, ctx, { chat, copy });
+      } else {
+        chat();
+      }
+      break;
+    }
+  }
+}
+
+export default function contextExtension(pi: ContextAPI): void {
+  pi.registerEntryRenderer<ContextDumpData>(
+    "context-dump",
+    (
+      entry: Readonly<{ data?: Readonly<ContextDumpData> | undefined }>,
+      options: Readonly<{ expanded: boolean }>,
+      theme: CardTheme,
+    ) => renderContextCard(entry.data, options.expanded, theme),
+  );
+  pi.registerCommand("context", {
+    description:
+      "Inspect system prompt (/context [view|chat|copy|save [file]])",
+    handler: async (args, ctx: ContextCommandSource) =>
+      runContextCommand(args, ctx, pi),
+  });
 }

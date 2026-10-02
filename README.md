@@ -31,8 +31,29 @@ fallback. This removes semantic completion and navigation, not CLI type
 checking. See
 [Zed's TypeScript documentation](https://zed.dev/docs/languages/typescript).
 
+## Context
+
+The package exposes one extension entry, `src/context/index.ts`. Use `/context`
+or `/context view` to inspect the current system prompt in a scrollable viewer.
+`/context chat` records a durable snapshot card without adding it to model
+context; Ctrl+O expands its prompt.
+
+`/context copy` copies the original prompt, and `/context save [file]` writes it
+relative to the working directory. The default filename is `system-prompt.md`.
+Rendering strips terminal control sequences; copying and saving preserve the
+original text. Token counts derived from character counts are estimates, not
+tokenizer results.
+
+In non-TUI modes, viewing records a snapshot rather than opening a terminal
+component. The viewer supports line/page navigation, g/G for start/end, f for
+height, c to copy, d/Enter to record a card, and q/Escape to close.
+
+This entry is not enabled in your existing Pi configuration yet. Disable the old
+context extension before installing this local package, otherwise the command
+and renderer names collide.
+
 ## Status
 
-This repository contains the development toolchain only. The context,
-scroll-speed, and status-line extensions have not been migrated. It is not yet
-an installable Pi package.
+Context is migrated. Status line remains to be migrated. Scroll speed uses Pi's
+built-in `fullscreenWheelScrollLines` setting rather than another extension.
+Existing user extensions and settings are unchanged.
