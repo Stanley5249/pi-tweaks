@@ -100,6 +100,11 @@ export function collectPromptData(
   };
 }
 
+export function formatPromptSummary(data: Readonly<ContextDumpData>): string {
+  const tokens = Math.ceil(data.promptCharCount / charsPerToken);
+  return `${data.promptCharCount.toLocaleString()} chars · ~${tokens.toLocaleString()} tokens (estimate)`;
+}
+
 export function formatPromptSizeEstimate(
   data: Readonly<ContextDumpData>,
 ): string {

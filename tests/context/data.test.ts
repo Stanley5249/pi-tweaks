@@ -3,6 +3,7 @@ import {
   collectPromptData,
   formatModel,
   formatPromptSizeEstimate,
+  formatPromptSummary,
   parseContextCommand,
 } from "../../src/context/data";
 import type { PromptSource } from "../../src/context/data";
@@ -99,6 +100,12 @@ test("preserves missing model and context usage", () => {
   expect(formatModel(data)).toBe("unknown");
   expect(data.usage).toBeUndefined();
   expect(data.contextFileCharCount).toBe(0);
+});
+
+test("summarizes the entire prompt with a clearly labeled rough token count", () => {
+  expect(
+    formatPromptSummary({ promptCharCount: 12, systemPrompt: "base context" }),
+  ).toBe("12 chars · ~3 tokens (estimate)");
 });
 
 test("labels character-based token counts as an estimate", () => {

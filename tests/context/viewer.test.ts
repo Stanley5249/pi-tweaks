@@ -117,6 +117,24 @@ test("supports taller view, resize, page navigation, and invalidation", () => {
   expect(viewer.render(normalWidth)).toHaveLength(1);
 });
 
+test("reveals navigation and size details only when help is requested", () => {
+  const { state, viewer } = fixture("PROMPT BODY");
+  const renderText = () =>
+    viewer
+      .render(normalWidth)
+      .map((line) => stripTerminalSequences(line))
+      .join("\n");
+  expect(renderText()).toContain("tokens (estimate)");
+  expect(renderText()).not.toContain("j/k line");
+  viewer.handleInput?.("?");
+  expect(state.rendered).toBe(true);
+  expect(renderText()).toContain("j/k line");
+  expect(renderText()).toContain("context estimate not recorded");
+  expect(renderText()).toContain("PROMPT BODY");
+  viewer.handleInput?.("?");
+  expect(renderText()).not.toContain("j/k line");
+});
+
 test("copies without closing and dumps to chat before closing", async () => {
   const { state, viewer } = fixture();
   viewer.handleInput?.("c");
