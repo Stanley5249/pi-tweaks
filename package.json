@@ -3,10 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Personal Pi extensions for context, scrolling, and status display.",
+  "description": "Personal Pi extensions for context inspection and status display.",
   "pi": {
     "extensions": [
-      "./src/context/index.ts"
+      "./src/context/index.ts",
+      "./src/status-line/index.ts"
     ]
   },
   "peerDependencies": {
