@@ -3,10 +3,16 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
   ScrollView,
   Text,
+  matchesKey,
   truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import type { Component } from "@earendil-works/pi-tui";
+import type {
+  Component,
+  KeyId,
+  TuiMouseEvent,
+  TuiMouseEventResult,
+} from "@earendil-works/pi-tui";
 import {
   formatModel,
   formatPromptSizeEstimate,
@@ -32,6 +38,10 @@ export type ViewerEnvironment = Readonly<{
   requestRender: () => void;
   theme: ViewerTheme;
 }>;
+
+function isKey(input: string, ...keys: readonly KeyId[]): boolean {
+  return keys.some((key) => matchesKey(input, key));
+}
 
 function renderHeader(
   data: Readonly<ContextDumpData>,
@@ -60,7 +70,7 @@ class PromptViewer implements Component {
   private readonly safePrompt: string;
   private readonly data: Readonly<ContextDumpData>;
   private readonly environment: ViewerEnvironment;
-  private readonly expanded = false;
+  private expanded = false;
 
   constructor(data: Readonly<ContextDumpData>, environment: ViewerEnvironment) {
     this.data = data;
@@ -73,6 +83,60 @@ class PromptViewer implements Component {
       scrollbar: "hidden",
     });
     this.invalidate();
+  }
+
+  private scrollBy(lines: number): void {
+    this.viewport.scrollBy(lines);
+    this.environment.requestRender();
+  }
+
+  private async copy(): Promise<void> {
+    try {
+      await this.environment.copy();
+    } catch (error) {
+      this.environment.onError(error);
+    }
+  }
+
+  handleInput(input: string): void {
+    const { environment } = this;
+    if (isKey(input, "escape", "q", "shift+q")) {
+      environment.close();
+    } else if (isKey(input, "f", "shift+f")) {
+      this.expanded = !this.expanded;
+      environment.requestRender();
+    } else if (isKey(input, "up", "k")) {
+      this.scrollBy(-1);
+    } else if (isKey(input, "down", "j")) {
+      this.scrollBy(1);
+    } else if (isKey(input, "b", "shift+b", "pageUp", "ctrl+pageUp")) {
+      this.scrollBy(-Math.max(1, this.viewport.viewportHeight - 1));
+    } else if (isKey(input, "space", "pageDown", "ctrl+pageDown")) {
+      this.scrollBy(Math.max(1, this.viewport.viewportHeight - 1));
+    } else if (isKey(input, "g", "ctrl+home")) {
+      this.viewport.scrollToStart();
+      environment.requestRender();
+    } else if (isKey(input, "shift+g", "ctrl+end")) {
+      this.viewport.scrollToEnd();
+      environment.requestRender();
+    } else if (isKey(input, "c", "shift+c")) {
+      void this.copy();
+    } else if (isKey(input, "d", "shift+d", "enter")) {
+      environment.chat();
+      environment.close();
+    }
+  }
+
+  handleMouse(event: Readonly<TuiMouseEvent>): TuiMouseEventResult | undefined {
+    if (
+      event.type === "wheel" &&
+      event.wheelDelta !== undefined &&
+      event.wheelDelta !== 0
+    ) {
+      this.scrollBy(event.wheelDelta);
+      return { handled: true, render: true };
+    }
+    return undefined;
   }
 
   invalidate(): void {

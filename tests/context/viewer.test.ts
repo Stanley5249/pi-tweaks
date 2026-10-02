@@ -6,6 +6,7 @@ import type { ViewerEnvironment } from "../../src/context/viewer";
 
 initTheme("dark", false);
 const defaultRows = 24;
+const lineCount = 40;
 const normalWidth = 80;
 const narrowWidth = 2;
 const compactHeight = 8;
@@ -42,6 +43,13 @@ function fixture(prompt = "", rows = defaultRows) {
   return { state, viewer };
 }
 
+function longPrompt(): string {
+  return Array.from(
+    { length: lineCount },
+    (_line, index) => `line ${index}`,
+  ).join("\n");
+}
+
 test("keeps narrow and Chinese content within the terminal dimensions", () => {
   for (const rows of [1, narrowWidth, compactHeight, defaultRows]) {
     for (const width of [1, narrowWidth, compactHeight, normalWidth]) {
@@ -55,20 +63,65 @@ test("keeps narrow and Chinese content within the terminal dimensions", () => {
   }
 });
 
-test("invalidates rendering after a terminal resize", () => {
-  const { state, viewer } = fixture("some text");
+test("clamps scrolling and forwards the configured wheel delta", () => {
+  const { state, viewer } = fixture(longPrompt());
   viewer.render(normalWidth);
+  viewer.handleInput?.("j");
+  expect(state.rendered).toBe(true);
+  expect(viewer.render(normalWidth).at(-1)).toContain("Row 2-");
+  viewer.handleMouse?.({
+    alt: false,
+    button: "none",
+    ctrl: false,
+    height: defaultRows,
+    screenX: 0,
+    screenY: 0,
+    shift: false,
+    type: "wheel",
+    wheelDelta: lineCount,
+    width: normalWidth,
+    x: 0,
+    y: 0,
+  });
+  expect(viewer.render(normalWidth).at(-1)).toContain("100%");
+  viewer.handleInput?.("g");
+  viewer.handleInput?.("k");
+  expect(viewer.render(normalWidth).at(-1)).toContain("Row 1-");
+});
+
+test("supports taller view, resize, page navigation, and invalidation", () => {
+  const { state, viewer } = fixture(longPrompt());
+  const original = viewer.render(normalWidth).length;
+  viewer.handleInput?.("f");
+  expect(viewer.render(normalWidth).length).toBeGreaterThan(original);
+  viewer.handleInput?.(" ");
+  expect(viewer.render(normalWidth).at(-1)).not.toContain("Row 1-");
+  viewer.handleInput?.("b");
+  expect(viewer.render(normalWidth).at(-1)).toContain("Row 1-");
   state.rows = 1;
   viewer.invalidate();
   expect(viewer.render(normalWidth)).toHaveLength(1);
 });
 
-test("shows an empty-prompt placeholder", () => {
+test("copies without closing and dumps to chat before closing", async () => {
+  const { state, viewer } = fixture();
+  viewer.handleInput?.("c");
+  await Promise.resolve();
+  expect(state.copied).toBe(true);
+  expect(state.closed).toBe(false);
+  viewer.handleInput?.("\r");
+  expect(state.dumped).toBe(true);
+  expect(state.closed).toBe(true);
+});
+
+test("shows an empty-prompt placeholder and closes without a chat entry", () => {
   const { state, viewer } = fixture();
   const text = viewer
     .render(normalWidth)
     .map((line) => stripTerminalSequences(line))
     .join("\n");
   expect(text).toContain("(Empty system prompt)");
-  expect(state.closed).toBe(false);
+  viewer.handleInput?.("q");
+  expect(state.closed).toBe(true);
+  expect(state.dumped).toBe(false);
 });
