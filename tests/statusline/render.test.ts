@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   createStatusFooter,
   renderStatusLine,
@@ -17,6 +17,8 @@ const kilo = 1000;
 const cacheRead = 3000;
 const contextWindow = 128_000;
 const contextPercent = 25;
+const warningPercent = 50;
+const criticalPercent = 80;
 const testCost = 0.125;
 const wideTerminal = 200;
 const compactWidth = 8;
@@ -92,8 +94,7 @@ test("uses live theme helpers and disposes the branch subscription once", () => 
 });
 
 test("shows path, branch, session, usage, cache rate, model, and thinking", () => {
-  const lines = renderStatusLine(snapshot(), theme, wideTerminal);
-  const text = lines.map((line) => stripTerminalSequences(line)).join("\n");
+  const text = renderStatusLine(snapshot(), theme, wideTerminal).join("\n");
   expect(text).toContain("project (main)");
   expect(text).toContain("session");
   expect(text).toContain("in 1.0k");
@@ -120,15 +121,11 @@ test("preserves model and context before secondary metrics", () => {
       input: 120_000,
     },
   };
-  const normal = stripTerminalSequences(
-    renderStatusLine(data, theme, normalWidth).at(1) ?? "",
-  );
+  const [, normal] = renderStatusLine(data, theme, normalWidth);
   expect(normal).toContain("gemini-3-pro");
   expect(normal).toContain("ctx 25%/128k");
   expect(normal).not.toContain("read ");
-  const narrow = stripTerminalSequences(
-    renderStatusLine(data, theme, narrowWidth).at(1) ?? "",
-  );
+  const [, narrow] = renderStatusLine(data, theme, narrowWidth);
   expect(narrow).toContain("gemini-3-pro");
   expect(narrow).toContain("ctx 25%");
   expect(narrow).not.toContain("high");
@@ -140,9 +137,7 @@ test("shortens long paths before hiding the branch", () => {
     ...snapshot(),
     cwd: "a/very/long/path/that/would/otherwise/hide/the/branch",
   };
-  const top = stripTerminalSequences(
-    renderStatusLine(data, theme, pathWidth).at(0) ?? "",
-  );
+  const [top] = renderStatusLine(data, theme, pathWidth);
   expect(top).toContain("(main)");
   expect(top).not.toContain("session");
 });
@@ -170,9 +165,7 @@ test("sanitizes external text and keeps extension statuses visible", () => {
     sessionName: "\u001B[31msession\u001B[0m",
     statuses: ["tool\nstatus\u0007"],
   };
-  const text = renderStatusLine(data, theme, wideTerminal)
-    .map((line) => stripTerminalSequences(line))
-    .join("\n");
+  const text = renderStatusLine(data, theme, wideTerminal).join("\n");
   expect(text).toContain("main branch");
   expect(text).toContain("tool status");
   expect(text).not.toContain("\u0007");
@@ -185,48 +178,26 @@ test("shows unknown context and no-model without invented usage", () => {
     model: undefined,
     stats: collectUsage([]),
   };
-  const text = renderStatusLine(data, theme, wideTerminal)
-    .map((line) => stripTerminalSequences(line))
-    .join("\n");
+  const text = renderStatusLine(data, theme, wideTerminal).join("\n");
   expect(text).toContain("ctx ?/0");
   expect(text).toContain("no-model");
   expect(text).not.toContain("in ");
 });
 
 test("reserves warning colors for context pressure", () => {
-  const colors: string[] = [];
-  const recordingTheme: FooterTheme = {
-    bold: (text) => text,
-    fg: (color, text) => {
-      colors.push(color);
-      return text;
-    },
-    getThinkingBorderColor: () => (text) => text,
-  };
-  renderStatusLine(snapshot(), recordingTheme, wideTerminal);
-  expect(colors).toContain("accent");
-  expect(colors).not.toContain("warning");
-  expect(colors).not.toContain("error");
-  const warningPercent = 50;
-  renderStatusLine(
-    {
+  expect(recordColors(snapshot()).get("model")).toBe("accent");
+  const cases = [
+    [contextPercent, "muted"],
+    [warningPercent, "warning"],
+    [criticalPercent, "error"],
+  ] as const;
+  for (const [percent, color] of cases) {
+    const colors = recordColors({
       ...snapshot(),
-      contextUsage: { contextWindow, percent: warningPercent, tokens: kilo },
-    },
-    recordingTheme,
-    wideTerminal,
-  );
-  expect(colors).toContain("warning");
-  const criticalPercent = 80;
-  renderStatusLine(
-    {
-      ...snapshot(),
-      contextUsage: { contextWindow, percent: criticalPercent, tokens: kilo },
-    },
-    recordingTheme,
-    wideTerminal,
-  );
-  expect(colors).toContain("error");
+      contextUsage: { contextWindow, percent, tokens: kilo },
+    });
+    expect(colors.get(`${percent}%`)).toBe(color);
+  }
 });
 
 function recordColors(data: FooterSnapshot): Map<string, string> {
