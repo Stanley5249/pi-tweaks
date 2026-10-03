@@ -21,6 +21,17 @@ const contextCritical = 80;
 const costPrecision = 3;
 const minimumGap = 2;
 
+// Pi themes tune these tokens for the editor border, so the footer matches it.
+const thinkingColors: Readonly<Record<string, ThemeColor>> = {
+  high: "thinkingHigh",
+  low: "thinkingLow",
+  max: "thinkingMax",
+  medium: "thinkingMedium",
+  minimal: "thinkingMinimal",
+  off: "thinkingOff",
+  xhigh: "thinkingXhigh",
+};
+
 export type StatusModel = Readonly<{
   contextWindow: number;
   id: string;
@@ -38,6 +49,20 @@ export type FooterSnapshot = Readonly<{
   statuses: readonly string[];
   thinkingLevel?: string | undefined;
 }>;
+
+function metric(
+  theme: FooterTheme,
+  label: string,
+  [color, value]: readonly [ThemeColor, string],
+): string {
+  return `${theme.fg("dim", label)} ${theme.fg(color, value)}`;
+}
+
+function thinkingColor(level: string): ThemeColor {
+  return Object.hasOwn(thinkingColors, level)
+    ? (thinkingColors[level] ?? "muted")
+    : "muted";
+}
 
 function contextColor(percent: number): ThemeColor {
   if (percent >= contextCritical) {
@@ -62,9 +87,9 @@ function renderTop(
     0,
     width - visibleWidth(branchText) - (branchText === "" ? 0 : 1),
   );
-  const path = theme.fg("muted", truncateToWidth(cwd, pathWidth));
+  const path = theme.bold(theme.fg("text", truncateToWidth(cwd, pathWidth)));
   const parts = [path, branchText].filter((part) => part !== "");
-  const sessionText = theme.fg("muted", `· ${session}`);
+  const sessionText = `${theme.fg("dim", "·")} ${theme.fg("muted", session)}`;
   if (
     session !== "" &&
     visibleWidth([...parts, sessionText].join(" ")) <= width
@@ -78,30 +103,31 @@ function renderStats(snapshot: FooterSnapshot, theme: FooterTheme): string[] {
   const { stats } = snapshot;
   const parts: string[] = [];
   if (stats.cost > 0) {
-    parts.push(theme.fg("muted", `$${stats.cost.toFixed(costPrecision)}`));
+    parts.push(
+      `${theme.fg("dim", "$")}${theme.fg("muted", stats.cost.toFixed(costPrecision))}`,
+    );
   }
   for (const [label, count] of [
     ["in", stats.input],
     ["out", stats.output],
   ] as const) {
     if (count > 0) {
-      parts.push(theme.fg("muted", `${label} ${formatTokens(count)}`));
+      parts.push(metric(theme, label, ["muted", formatTokens(count)]));
     }
   }
   if (
     (stats.cacheRead > 0 || stats.cacheWrite > 0) &&
     stats.latestCacheHitRate !== undefined
   ) {
-    parts.push(
-      theme.fg("muted", `hit ${stats.latestCacheHitRate.toFixed(0)}%`),
-    );
+    const rate = `${stats.latestCacheHitRate.toFixed(0)}%`;
+    parts.push(metric(theme, "hit", ["muted", rate]));
   }
   for (const [label, count] of [
     ["read", stats.cacheRead],
     ["write", stats.cacheWrite],
   ] as const) {
     if (count > 0) {
-      parts.push(theme.fg("muted", `${label} ${formatTokens(count)}`));
+      parts.push(metric(theme, label, ["muted", formatTokens(count)]));
     }
   }
   return parts;
@@ -116,11 +142,8 @@ function renderContext(
     percent === undefined || percent === null ? "?" : `${percent.toFixed(0)}%`;
   const window =
     snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow ?? 0;
-  const compact = `${theme.fg("muted", "ctx")} ${theme.fg(contextColor(percent ?? 0), display)}`;
-  return [
-    `${compact}${theme.fg("muted", `/${formatTokens(window)}`)}`,
-    compact,
-  ];
+  const compact = metric(theme, "ctx", [contextColor(percent ?? 0), display]);
+  return [`${compact}${theme.fg("dim", `/${formatTokens(window)}`)}`, compact];
 }
 
 function renderModel(
@@ -133,13 +156,15 @@ function renderModel(
   const parts = [name];
   if (snapshot.model?.reasoning === true) {
     const level = sanitizeSingleLine(snapshot.thinkingLevel ?? "off");
-    parts.push(theme.fg("muted", `· ${level}`));
+    parts.push(
+      `${theme.fg("dim", "·")} ${theme.fg(thinkingColor(level), level)}`,
+    );
   }
   const thinking = parts.join(" ");
   const full =
     provider === ""
       ? thinking
-      : `${theme.fg("muted", `(${provider})`)} ${thinking}`;
+      : `${theme.fg("dim", `(${provider})`)} ${thinking}`;
   return [full, thinking, name];
 }
 

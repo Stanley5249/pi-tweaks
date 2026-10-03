@@ -222,3 +222,30 @@ test("reserves warning colors for context pressure", () => {
   );
   expect(colors).toContain("error");
 });
+
+function recordColors(data: FooterSnapshot): Map<string, string> {
+  const colors = new Map<string, string>();
+  const recordingTheme: FooterTheme = {
+    bold: (text) => text,
+    fg: (color, text) => {
+      colors.set(text, color);
+      return text;
+    },
+  };
+  renderStatusLine(data, recordingTheme, wideTerminal);
+  return colors;
+}
+
+test("colors thinking levels with the theme thinking tokens", () => {
+  expect(recordColors(snapshot()).get("high")).toBe("thinkingHigh");
+  const unknown = recordColors({ ...snapshot(), thinkingLevel: "custom" });
+  expect(unknown.get("custom")).toBe("muted");
+  const inherited = recordColors({ ...snapshot(), thinkingLevel: "toString" });
+  expect(inherited.get("toString")).toBe("muted");
+});
+
+test("dims metric labels", () => {
+  const colors = recordColors(snapshot());
+  expect(colors.get("hit")).toBe("dim");
+  expect(colors.get("75%")).toBe("muted");
+});
