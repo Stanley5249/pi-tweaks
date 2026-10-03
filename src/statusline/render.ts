@@ -1,34 +1,30 @@
-import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+import type {
+  ContextUsage,
+  ExtensionContext,
+  Theme,
+  ThemeColor,
+} from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
-import { bold, createPalette, resolveFlavor } from "./palette";
-import type { Palette, PaletteColor } from "./palette";
 import { formatCwd, formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
 
-import type { Component } from "@earendil-works/pi-tui";
-
+// Pi does not export ThinkingLevel from its package index.
+export type ThinkingLevel = NonNullable<ExtensionContext["thinkingLevel"]>;
+export type FooterTheme = Readonly<
+  Pick<Theme, "bold" | "fg" | "getThinkingBorderColor">
+>;
 export type FooterEnvironment = Readonly<{
-  getThemeName: () => string | undefined;
   onBranchChange: (callback: () => void) => () => void;
   requestRender: () => void;
+  theme: FooterTheme;
 }>;
 
 const contextWarning = 50;
 const contextCritical = 80;
-const goodCacheHit = 70;
-const moderateCacheHit = 30;
 const costPrecision = 3;
 const minimumGap = 2;
-const thinkingColors: Readonly<Record<string, PaletteColor>> = {
-  high: "mauve",
-  low: "blue",
-  max: "red",
-  medium: "lavender",
-  minimal: "teal",
-  off: "surface2",
-  xhigh: "peach",
-};
 
 export type StatusModel = Readonly<{
   contextWindow: number;
@@ -45,98 +41,140 @@ export type FooterSnapshot = Readonly<{
   sessionName?: string | undefined;
   stats: UsageStats;
   statuses: readonly string[];
-  thinkingLevel?: string | undefined;
+  thinkingLevel?: ThinkingLevel | undefined;
 }>;
 
-function cacheColor(rate: number): PaletteColor {
-  if (rate >= goodCacheHit) {
-    return "green";
-  }
-  if (rate >= moderateCacheHit) {
-    return "yellow";
-  }
-  return "subtext0";
+function metric(
+  theme: FooterTheme,
+  label: string,
+  [color, value]: readonly [ThemeColor, string],
+): string {
+  return `${theme.fg("dim", label)} ${theme.fg(color, value)}`;
 }
 
-function contextColor(percent: number): PaletteColor {
+function contextColor(percent: number): ThemeColor {
   if (percent >= contextCritical) {
-    return "red";
+    return "error";
   }
   if (percent >= contextWarning) {
-    return "peach";
+    return "warning";
   }
-  return "teal";
+  return "muted";
 }
 
-function renderTop(snapshot: FooterSnapshot, palette: Palette): string {
+function renderTop(
+  snapshot: FooterSnapshot,
+  theme: FooterTheme,
+  width: number,
+): string {
   const cwd = sanitizeSingleLine(formatCwd(snapshot.cwd, snapshot.home));
   const branch = sanitizeSingleLine(snapshot.branch ?? "");
   const session = sanitizeSingleLine(snapshot.sessionName ?? "");
-  const parts = [palette.blue(bold(cwd))];
-  if (branch !== "") {
-    parts.push(palette.mauve(bold(`(${branch})`)));
+  // The path shrinks first so the branch stays visible.
+  const branchText =
+    branch === "" ? "" : ` ${theme.fg("muted", `(${branch})`)}`;
+  const pathWidth = Math.max(0, width - visibleWidth(branchText));
+  const path = theme.bold(theme.fg("text", truncateToWidth(cwd, pathWidth)));
+  const line = `${path}${branchText}`;
+  if (session === "") {
+    return line;
   }
-  if (session !== "") {
-    parts.push(`${palette.surface2("•")} ${palette.peach(bold(session))}`);
-  }
-  return parts.join(" ");
+  const full = `${line} ${theme.fg("dim", "·")} ${theme.fg("muted", session)}`;
+  return visibleWidth(full) <= width ? full : line;
 }
 
-function renderStats(snapshot: FooterSnapshot, palette: Palette): string {
+function renderStats(snapshot: FooterSnapshot, theme: FooterTheme): string[] {
   const { stats } = snapshot;
-  const parts: string[] = [];
-  const counts: readonly (readonly [string, number, PaletteColor])[] = [
-    ["in", stats.input, "sky"],
-    ["out", stats.output, "teal"],
-    ["read", stats.cacheRead, "green"],
-    ["write", stats.cacheWrite, "peach"],
-  ];
-  for (const [label, count, color] of counts) {
-    if (count > 0) {
-      parts.push(
-        `${palette.subtext0(label)} ${palette[color](formatTokens(count))}`,
-      );
-    }
-  }
-  if (
-    (stats.cacheRead > 0 || stats.cacheWrite > 0) &&
-    stats.latestCacheHitRate !== undefined
-  ) {
-    const rate = stats.latestCacheHitRate;
-    parts.push(
-      `${palette.subtext0("hit")} ${palette[cacheColor(rate)](`${rate.toFixed(0)}%`)}`,
-    );
-  }
-  if (stats.cost > 0) {
-    parts.push(
-      `${palette.subtext0("$")}${palette.yellow(stats.cost.toFixed(costPrecision))}`,
-    );
-  }
+  const count = (label: string, value: number): string =>
+    value > 0 ? metric(theme, label, ["muted", formatTokens(value)]) : "";
+  const cost =
+    stats.cost > 0
+      ? `${theme.fg("dim", "$")}${theme.fg("muted", stats.cost.toFixed(costPrecision))}`
+      : "";
+  const hasCache = stats.cacheRead > 0 || stats.cacheWrite > 0;
+  const rate = stats.latestCacheHitRate;
+  const hit =
+    hasCache && rate !== undefined
+      ? metric(theme, "hit", ["muted", `${rate.toFixed(0)}%`])
+      : "";
+  // Narrow rows drop stats from the end, so this order is their priority.
+  return [
+    cost,
+    count("in", stats.input),
+    count("out", stats.output),
+    hit,
+    count("read", stats.cacheRead),
+    count("write", stats.cacheWrite),
+  ].filter((part) => part !== "");
+}
+
+function renderContext(
+  snapshot: FooterSnapshot,
+  theme: FooterTheme,
+): readonly [string, string] {
   const percent = snapshot.contextUsage?.percent;
   const display =
     percent === undefined || percent === null ? "?" : `${percent.toFixed(0)}%`;
   const window =
     snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow ?? 0;
-  parts.push(
-    `${palette.subtext0("ctx")} ${palette[contextColor(percent ?? 0)](display)}${palette.overlay1(`/${formatTokens(window)}`)}`,
-  );
-  return parts.join(` ${palette.surface2("•")} `);
+  const compact = metric(theme, "ctx", [contextColor(percent ?? 0), display]);
+  return [`${compact}${theme.fg("dim", `/${formatTokens(window)}`)}`, compact];
 }
 
-function renderModel(snapshot: FooterSnapshot, palette: Palette): string {
+function renderModel(
+  snapshot: FooterSnapshot,
+  theme: FooterTheme,
+): Readonly<{ name: string; variants: readonly string[] }> {
   const model = sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model";
   const provider = sanitizeSingleLine(snapshot.model?.provider ?? "");
-  const parts: string[] = [];
-  if (provider !== "") {
-    parts.push(palette.overlay1(`(${provider})`));
-  }
-  parts.push(palette.lavender(bold(model)));
+  const name = theme.bold(theme.fg("accent", model));
+  const parts = [name];
   if (snapshot.model?.reasoning === true) {
-    const level = sanitizeSingleLine(snapshot.thinkingLevel ?? "off");
-    const color = thinkingColors[level] ?? "red";
-    parts.push(`${palette.surface2("•")} ${palette[color](level)}`);
+    const level = snapshot.thinkingLevel ?? "off";
+    // Match the editor border, which uses the same theme helper.
+    const color = theme.getThinkingBorderColor(level);
+    parts.push(`${theme.fg("dim", "·")} ${color(level)}`);
   }
-  return parts.join(" ");
+  const thinking = parts.join(" ");
+  const full =
+    provider === ""
+      ? thinking
+      : `${theme.fg("dim", `(${provider})`)} ${thinking}`;
+  return { name, variants: [full, thinking, name] };
+}
+
+function joinSides(left: string, right: string, width: number): string {
+  const gap = Math.max(
+    minimumGap,
+    width - visibleWidth(left) - visibleWidth(right),
+  );
+  return `${left}${" ".repeat(gap)}${right}`;
+}
+
+function renderUsageRow(
+  snapshot: FooterSnapshot,
+  theme: FooterTheme,
+  width: number,
+): string {
+  const { name, variants } = renderModel(snapshot, theme);
+  const nameWidth = visibleWidth(name);
+  const contexts = renderContext(snapshot, theme);
+  const context =
+    contexts.find(
+      (text) => nameWidth + minimumGap + visibleWidth(text) <= width,
+    ) ?? contexts[1];
+  const modelWidth = Math.max(0, width - visibleWidth(context) - minimumGap);
+  const model =
+    variants.find((text) => visibleWidth(text) <= modelWidth) ??
+    truncateToWidth(name, modelWidth);
+  const stats = renderStats(snapshot, theme);
+  const separator = theme.fg("dim", " · ");
+  const right = (): string => [...stats, context].join(separator);
+  const budget = width - visibleWidth(model) - minimumGap;
+  while (stats.length > 0 && visibleWidth(right()) > budget) {
+    stats.pop();
+  }
+  return joinSides(model, right(), width);
 }
 
 export function createStatusFooter(
@@ -144,7 +182,6 @@ export function createStatusFooter(
   environment: FooterEnvironment,
 ): Component & { dispose: () => void } {
   let disposed = false;
-  let palette = createPalette(resolveFlavor(environment.getThemeName()));
   const unsubscribe = environment.onBranchChange(() => {
     if (!disposed) {
       environment.requestRender();
@@ -157,33 +194,28 @@ export function createStatusFooter(
         unsubscribe();
       }
     },
-    invalidate() {
-      palette = createPalette(resolveFlavor(environment.getThemeName()));
-    },
+    // Theme helpers are evaluated on render, so no styled strings are cached.
+    invalidate() {},
     render(width) {
-      return renderStatusLine(read(), palette, width);
+      return renderStatusLine(read(), environment.theme, width);
     },
   };
 }
 
 export function renderStatusLine(
   snapshot: FooterSnapshot,
-  palette: Palette,
+  theme: FooterTheme,
   width: number,
 ): string[] {
-  const top = renderTop(snapshot, palette);
-  const left = renderStats(snapshot, palette);
-  const right = renderModel(snapshot, palette);
-  const gap = Math.max(
-    minimumGap,
-    width - visibleWidth(left) - visibleWidth(right),
-  );
-  const lines = [top, `${left}${" ".repeat(gap)}${right}`];
+  const lines = [
+    renderTop(snapshot, theme, width),
+    renderUsageRow(snapshot, theme, width),
+  ];
   if (snapshot.statuses.length > 0) {
     const statuses = snapshot.statuses
       .map((text) => sanitizeSingleLine(text))
       .join(" ");
-    lines.push(palette.subtext1(statuses));
+    lines.push(theme.fg("muted", statuses));
   }
   return lines.map((line) => truncateToWidth(line, width));
 }

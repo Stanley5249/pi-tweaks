@@ -1,24 +1,30 @@
 import { expect, test } from "bun:test";
-import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   createStatusFooter,
   renderStatusLine,
 } from "../../src/statusline/render";
-import type { FooterSnapshot } from "../../src/statusline/render";
+import type { FooterSnapshot, FooterTheme } from "../../src/statusline/render";
 import { collectUsage } from "../../src/statusline/stats";
-import {
-  createPalette,
-  isFlavor,
-  resolveFlavor,
-} from "../../src/statusline/palette";
+
+const theme: FooterTheme = {
+  bold: (text) => text,
+  fg: (_color, text) => text,
+  getThinkingBorderColor: () => (text) => text,
+};
 
 const kilo = 1000;
 const cacheRead = 3000;
 const contextWindow = 128_000;
 const contextPercent = 25;
+const warningPercent = 50;
+const criticalPercent = 80;
 const testCost = 0.125;
 const wideTerminal = 200;
 const compactWidth = 8;
+const normalWidth = 80;
+const narrowWidth = 24;
+const pathWidth = 32;
 
 function snapshot(): FooterSnapshot {
   return {
@@ -53,13 +59,17 @@ function snapshot(): FooterSnapshot {
 
 function noOperation(): void {}
 
-test("rebuilds theme colors and disposes the branch subscription once", () => {
+test("uses live theme helpers and disposes the branch subscription once", () => {
   let listener = noOperation;
-  let themeName = "catppuccin-mocha";
+  let color = "31";
+  const liveTheme: FooterTheme = {
+    bold: (text) => text,
+    fg: (_token, text) => `\u001B[${color}m${text}\u001B[39m`,
+    getThinkingBorderColor: () => (text) => text,
+  };
   let renders = 0;
   let disposed = 0;
   const footer = createStatusFooter(snapshot, {
-    getThemeName: () => themeName,
     onBranchChange: (handler) => {
       listener = handler;
       return () => {
@@ -69,9 +79,10 @@ test("rebuilds theme colors and disposes the branch subscription once", () => {
     requestRender: () => {
       renders += 1;
     },
+    theme: liveTheme,
   });
   const before = footer.render(wideTerminal).join("");
-  themeName = "catppuccin-latte";
+  color = "32";
   footer.invalidate();
   expect(footer.render(wideTerminal).join("")).not.toBe(before);
   listener();
@@ -83,12 +94,7 @@ test("rebuilds theme colors and disposes the branch subscription once", () => {
 });
 
 test("shows path, branch, session, usage, cache rate, model, and thinking", () => {
-  const lines = renderStatusLine(
-    snapshot(),
-    createPalette("mocha"),
-    wideTerminal,
-  );
-  const text = lines.map((line) => stripTerminalSequences(line)).join("\n");
+  const text = renderStatusLine(snapshot(), theme, wideTerminal).join("\n");
   expect(text).toContain("project (main)");
   expect(text).toContain("session");
   expect(text).toContain("in 1.0k");
@@ -99,6 +105,43 @@ test("shows path, branch, session, usage, cache rate, model, and thinking", () =
   expect(text).toContain("high");
 });
 
+test("preserves model and context before secondary metrics", () => {
+  const data = {
+    ...snapshot(),
+    model: {
+      contextWindow,
+      id: "gemini-3-pro",
+      provider: "google-antigravity",
+      reasoning: true,
+    },
+    stats: {
+      ...snapshot().stats,
+      cacheRead: 300_000,
+      cacheWrite: 120_000,
+      input: 120_000,
+    },
+  };
+  const [, normal] = renderStatusLine(data, theme, normalWidth);
+  expect(normal).toContain("gemini-3-pro");
+  expect(normal).toContain("ctx 25%/128k");
+  expect(normal).not.toContain("read ");
+  const [, narrow] = renderStatusLine(data, theme, narrowWidth);
+  expect(narrow).toContain("gemini-3-pro");
+  expect(narrow).toContain("ctx 25%");
+  expect(narrow).not.toContain("high");
+  expect(narrow).not.toContain("hit ");
+});
+
+test("shortens long paths before hiding the branch", () => {
+  const data = {
+    ...snapshot(),
+    cwd: "a/very/long/path/that/would/otherwise/hide/the/branch",
+  };
+  const [top] = renderStatusLine(data, theme, pathWidth);
+  expect(top).toContain("(main)");
+  expect(top).not.toContain("session");
+});
+
 test("bounds narrow and Chinese footer rows", () => {
   const data = {
     ...snapshot(),
@@ -107,7 +150,7 @@ test("bounds narrow and Chinese footer rows", () => {
     statuses: ["中文狀態"],
   };
   for (const width of [0, 1, compactWidth, wideTerminal]) {
-    const lines = renderStatusLine(data, createPalette("mocha"), width);
+    const lines = renderStatusLine(data, theme, width);
     for (const line of lines) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
@@ -122,9 +165,7 @@ test("sanitizes external text and keeps extension statuses visible", () => {
     sessionName: "\u001B[31msession\u001B[0m",
     statuses: ["tool\nstatus\u0007"],
   };
-  const text = renderStatusLine(data, createPalette("mocha"), wideTerminal)
-    .map((line) => stripTerminalSequences(line))
-    .join("\n");
+  const text = renderStatusLine(data, theme, wideTerminal).join("\n");
   expect(text).toContain("main branch");
   expect(text).toContain("tool status");
   expect(text).not.toContain("\u0007");
@@ -137,28 +178,53 @@ test("shows unknown context and no-model without invented usage", () => {
     model: undefined,
     stats: collectUsage([]),
   };
-  const text = renderStatusLine(data, createPalette("mocha"), wideTerminal)
-    .map((line) => stripTerminalSequences(line))
-    .join("\n");
+  const text = renderStatusLine(data, theme, wideTerminal).join("\n");
   expect(text).toContain("ctx ?/0");
   expect(text).toContain("no-model");
   expect(text).not.toContain("in ");
 });
 
-test("resolves Catppuccin flavors and defaults other themes to mocha", () => {
-  expect(resolveFlavor("catppuccin-latte")).toBe("latte");
-  expect(resolveFlavor("CATPPUCCIN-FRAPPE")).toBe("frappe");
-  expect(resolveFlavor("catppuccin-macchiato")).toBe("macchiato");
-  expect(resolveFlavor("dark")).toBe("mocha");
-  expect(resolveFlavor()).toBe("mocha");
-  expect(isFlavor("mocha")).toBe(true);
-  expect(isFlavor("toString")).toBe(false);
+test("reserves warning colors for context pressure", () => {
+  expect(recordColors(snapshot()).get("model")).toBe("accent");
+  const cases = [
+    [contextPercent, "muted"],
+    [warningPercent, "warning"],
+    [criticalPercent, "error"],
+  ] as const;
+  for (const [percent, color] of cases) {
+    const colors = recordColors({
+      ...snapshot(),
+      contextUsage: { contextWindow, percent, tokens: kilo },
+    });
+    expect(colors.get(`${percent}%`)).toBe(color);
+  }
 });
 
-test("creates flavor-specific terminal colors", () => {
-  const mocha = createPalette("mocha").blue("中文");
-  const latte = createPalette("latte").blue("中文");
-  expect(mocha).toContain("\u001B[38;2;");
-  expect(mocha).toContain("中文");
-  expect(mocha).not.toBe(latte);
+function recordColors(data: FooterSnapshot): Map<string, string> {
+  const colors = new Map<string, string>();
+  const recordingTheme: FooterTheme = {
+    bold: (text) => text,
+    fg: (color, text) => {
+      colors.set(text, color);
+      return text;
+    },
+    getThinkingBorderColor: (level) => (text) => {
+      colors.set(text, `thinking:${level}`);
+      return text;
+    },
+  };
+  renderStatusLine(data, recordingTheme, wideTerminal);
+  return colors;
+}
+
+test("colors thinking levels like the editor border", () => {
+  expect(recordColors(snapshot()).get("high")).toBe("thinking:high");
+  const off = recordColors({ ...snapshot(), thinkingLevel: undefined });
+  expect(off.get("off")).toBe("thinking:off");
+});
+
+test("dims metric labels", () => {
+  const colors = recordColors(snapshot());
+  expect(colors.get("hit")).toBe("dim");
+  expect(colors.get("75%")).toBe("muted");
 });

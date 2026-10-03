@@ -5,24 +5,20 @@ import type {
   ExtensionUIContext,
   ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
-import { isFlavor } from "./palette";
 import { createStatusFooter } from "./render";
-import type { StatusModel } from "./render";
+import type { FooterTheme, StatusModel } from "./render";
 import { collectUsage } from "./stats";
 import type { UsageEntry } from "./stats";
 
 export type StatusContext = Readonly<
-  Pick<ExtensionContext, "getContextUsage" | "mode"> & {
+  Pick<ExtensionContext, "getContextUsage" | "mode" | "thinkingLevel"> & {
     model?: StatusModel | undefined;
     sessionManager: Readonly<{
       getBranch: () => readonly UsageEntry[];
       getCwd: () => string;
       getSessionName: () => string | undefined;
     }>;
-    thinkingLevel?: string | undefined;
-    ui: Readonly<
-      Pick<ExtensionUIContext, "notify" | "select" | "setFooter" | "setTheme">
-    >;
+    ui: Readonly<Pick<ExtensionUIContext, "notify" | "setFooter">>;
   }
 >;
 export type StatusController = Readonly<{
@@ -59,7 +55,7 @@ class FooterController implements StatusController {
     ctx.ui.setFooter(
       (
         tui: Readonly<{ requestRender: () => void }>,
-        theme: Readonly<{ name?: string | undefined }>,
+        theme: FooterTheme,
         footerData: FooterData,
       ) =>
         createStatusFooter(
@@ -75,9 +71,9 @@ class FooterController implements StatusController {
             thinkingLevel: ctx.thinkingLevel,
           }),
           {
-            getThemeName: () => theme.name,
             onBranchChange: (handler) => footerData.onBranchChange(handler),
             requestRender: () => tui.requestRender(),
+            theme,
           },
         ),
     );
@@ -97,9 +93,7 @@ class FooterController implements StatusController {
     this.enabled = !this.enabled;
     this.start(ctx);
     ctx.ui.notify(
-      this.enabled
-        ? "Catppuccin status bar enabled"
-        : "Default status bar restored",
+      this.enabled ? "Statusline enabled" : "Default statusline restored",
       "info",
     );
   }
@@ -107,42 +101,6 @@ class FooterController implements StatusController {
 
 export function createStatusController(): StatusController {
   return new FooterController();
-}
-
-export async function selectFlavor(
-  args: string,
-  ctx: StatusContext,
-): Promise<void> {
-  if (ctx.mode !== "tui") {
-    ctx.ui.notify("Theme selection is available only in TUI mode", "warning");
-    return;
-  }
-  let target = args.trim().toLowerCase();
-  if (target === "") {
-    const choice = await ctx.ui.select("Select Catppuccin Flavor:", [
-      "Mocha (Dark)",
-      "Macchiato (Dark)",
-      "Frappe (Dark)",
-      "Latte (Light)",
-    ]);
-    if (choice === undefined) {
-      return;
-    }
-    target = choice.split(" ").at(0)?.toLowerCase() ?? "";
-  }
-  if (!isFlavor(target)) {
-    ctx.ui.notify("Invalid Catppuccin flavor", "error");
-    return;
-  }
-  const result = ctx.ui.setTheme(`catppuccin-${target}`);
-  if (result.success) {
-    ctx.ui.notify(`Switched to Catppuccin ${target}`, "info");
-  } else {
-    ctx.ui.notify(
-      `Failed to set theme: ${result.error ?? "Unknown error"}`,
-      "error",
-    );
-  }
 }
 
 export default function statusLineExtension(
@@ -156,11 +114,7 @@ export default function statusLineExtension(
     controller.stop(ctx),
   );
   pi.registerCommand("statusline", {
-    description: "Toggle Catppuccin status bar",
+    description: "Toggle statusline",
     handler: async (_args, ctx: StatusContext) => controller.toggle(ctx),
-  });
-  pi.registerCommand("catppuccin", {
-    description: "Switch Catppuccin flavor (mocha, macchiato, frappe, latte)",
-    handler: async (args, ctx: StatusContext) => selectFlavor(args, ctx),
   });
 }
