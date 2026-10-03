@@ -1,19 +1,25 @@
-import { flavors } from "@catppuccin/palette";
 import type {
   ExtensionAPI,
   ExtensionContext,
   ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 
-export type FlavorName = keyof typeof flavors;
 export type FlavorContext = Readonly<
   Pick<ExtensionContext, "mode"> & {
     ui: Readonly<Pick<ExtensionUIContext, "notify" | "select" | "setTheme">>;
   }
 >;
 
-export function isFlavor(name: string): name is FlavorName {
-  return Object.hasOwn(flavors, name);
+// Labels double as select options; ids match the bundled theme file names.
+const flavors = new Map([
+  ["Mocha (Dark)", "mocha"],
+  ["Macchiato (Dark)", "macchiato"],
+  ["Frappe (Dark)", "frappe"],
+  ["Latte (Light)", "latte"],
+]);
+
+export function isFlavor(name: string): boolean {
+  return [...flavors.values()].includes(name);
 }
 
 export async function selectFlavor(
@@ -27,15 +33,12 @@ export async function selectFlavor(
   let target = args.trim().toLowerCase();
   if (target === "") {
     const choice = await ctx.ui.select("Select Catppuccin Flavor:", [
-      "Mocha (Dark)",
-      "Macchiato (Dark)",
-      "Frappe (Dark)",
-      "Latte (Light)",
+      ...flavors.keys(),
     ]);
     if (choice === undefined) {
       return;
     }
-    target = choice.split(" ").at(0)?.toLowerCase() ?? "";
+    target = flavors.get(choice) ?? "";
   }
   if (!isFlavor(target)) {
     ctx.ui.notify("Invalid Catppuccin flavor", "error");
