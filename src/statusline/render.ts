@@ -70,55 +70,42 @@ function renderTop(
   const cwd = sanitizeSingleLine(formatCwd(snapshot.cwd, snapshot.home));
   const branch = sanitizeSingleLine(snapshot.branch ?? "");
   const session = sanitizeSingleLine(snapshot.sessionName ?? "");
-  const branchText = branch === "" ? "" : theme.fg("muted", `(${branch})`);
-  const pathWidth = Math.max(
-    0,
-    width - visibleWidth(branchText) - (branchText === "" ? 0 : 1),
-  );
+  // The path shrinks first so the branch stays visible.
+  const branchText =
+    branch === "" ? "" : ` ${theme.fg("muted", `(${branch})`)}`;
+  const pathWidth = Math.max(0, width - visibleWidth(branchText));
   const path = theme.bold(theme.fg("text", truncateToWidth(cwd, pathWidth)));
-  const parts = [path, branchText].filter((part) => part !== "");
-  const sessionText = `${theme.fg("dim", "·")} ${theme.fg("muted", session)}`;
-  if (
-    session !== "" &&
-    visibleWidth([...parts, sessionText].join(" ")) <= width
-  ) {
-    parts.push(sessionText);
+  const line = `${path}${branchText}`;
+  if (session === "") {
+    return line;
   }
-  return parts.join(" ");
+  const full = `${line} ${theme.fg("dim", "·")} ${theme.fg("muted", session)}`;
+  return visibleWidth(full) <= width ? full : line;
 }
 
 function renderStats(snapshot: FooterSnapshot, theme: FooterTheme): string[] {
   const { stats } = snapshot;
-  const parts: string[] = [];
-  if (stats.cost > 0) {
-    parts.push(
-      `${theme.fg("dim", "$")}${theme.fg("muted", stats.cost.toFixed(costPrecision))}`,
-    );
-  }
-  for (const [label, count] of [
-    ["in", stats.input],
-    ["out", stats.output],
-  ] as const) {
-    if (count > 0) {
-      parts.push(metric(theme, label, ["muted", formatTokens(count)]));
-    }
-  }
-  if (
-    (stats.cacheRead > 0 || stats.cacheWrite > 0) &&
-    stats.latestCacheHitRate !== undefined
-  ) {
-    const rate = `${stats.latestCacheHitRate.toFixed(0)}%`;
-    parts.push(metric(theme, "hit", ["muted", rate]));
-  }
-  for (const [label, count] of [
-    ["read", stats.cacheRead],
-    ["write", stats.cacheWrite],
-  ] as const) {
-    if (count > 0) {
-      parts.push(metric(theme, label, ["muted", formatTokens(count)]));
-    }
-  }
-  return parts;
+  const count = (label: string, value: number): string =>
+    value > 0 ? metric(theme, label, ["muted", formatTokens(value)]) : "";
+  const cost =
+    stats.cost > 0
+      ? `${theme.fg("dim", "$")}${theme.fg("muted", stats.cost.toFixed(costPrecision))}`
+      : "";
+  const hasCache = stats.cacheRead > 0 || stats.cacheWrite > 0;
+  const rate = stats.latestCacheHitRate;
+  const hit =
+    hasCache && rate !== undefined
+      ? metric(theme, "hit", ["muted", `${rate.toFixed(0)}%`])
+      : "";
+  // Narrow rows drop stats from the end, so this order is their priority.
+  return [
+    cost,
+    count("in", stats.input),
+    count("out", stats.output),
+    hit,
+    count("read", stats.cacheRead),
+    count("write", stats.cacheWrite),
+  ].filter((part) => part !== "");
 }
 
 function renderContext(
@@ -137,7 +124,7 @@ function renderContext(
 function renderModel(
   snapshot: FooterSnapshot,
   theme: FooterTheme,
-): readonly string[] {
+): Readonly<{ name: string; variants: readonly string[] }> {
   const model = sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model";
   const provider = sanitizeSingleLine(snapshot.model?.provider ?? "");
   const name = theme.bold(theme.fg("accent", model));
@@ -153,7 +140,7 @@ function renderModel(
     provider === ""
       ? thinking
       : `${theme.fg("dim", `(${provider})`)} ${thinking}`;
-  return [full, thinking, name];
+  return { name, variants: [full, thinking, name] };
 }
 
 function joinSides(left: string, right: string, width: number): string {
@@ -161,7 +148,7 @@ function joinSides(left: string, right: string, width: number): string {
     minimumGap,
     width - visibleWidth(left) - visibleWidth(right),
   );
-  return truncateToWidth(`${left}${" ".repeat(gap)}${right}`, width);
+  return `${left}${" ".repeat(gap)}${right}`;
 }
 
 function renderUsageRow(
@@ -169,31 +156,25 @@ function renderUsageRow(
   theme: FooterTheme,
   width: number,
 ): string {
-  const models = renderModel(snapshot, theme);
-  const name = models.at(-1) ?? "";
+  const { name, variants } = renderModel(snapshot, theme);
+  const nameWidth = visibleWidth(name);
   const contexts = renderContext(snapshot, theme);
   const context =
     contexts.find(
-      (text) => visibleWidth(name) + minimumGap + visibleWidth(text) <= width,
-    ) ??
-    contexts.at(-1) ??
-    "";
+      (text) => nameWidth + minimumGap + visibleWidth(text) <= width,
+    ) ?? contexts[1];
   const modelWidth = Math.max(0, width - visibleWidth(context) - minimumGap);
   const model =
-    models.find((text) => visibleWidth(text) <= modelWidth) ??
+    variants.find((text) => visibleWidth(text) <= modelWidth) ??
     truncateToWidth(name, modelWidth);
   const stats = renderStats(snapshot, theme);
   const separator = theme.fg("dim", " · ");
-  while (
-    stats.length > 0 &&
-    visibleWidth(model) +
-      minimumGap +
-      visibleWidth([...stats, context].join(separator)) >
-      width
-  ) {
+  const right = (): string => [...stats, context].join(separator);
+  const budget = width - visibleWidth(model) - minimumGap;
+  while (stats.length > 0 && visibleWidth(right()) > budget) {
     stats.pop();
   }
-  return joinSides(model, [...stats, context].join(separator), width);
+  return joinSides(model, right(), width);
 }
 
 export function createStatusFooter(
