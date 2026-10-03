@@ -8,13 +8,21 @@ initTheme("dark", false);
 const defaultRows = 24;
 const lineCount = 40;
 const normalWidth = 80;
+const wideWidth = 120;
+const narrowHeader = 41;
+// Tag markers count as visible text, so the tagged header needs extra room.
+const taggedWidth = 400;
 const narrowWidth = 2;
 const compactHeight = 8;
 const bodyAndFooterRows = 4;
 const bodyAndHeaderRows = 6;
 const shortRows = [1, narrowWidth, bodyAndFooterRows, bodyAndHeaderRows];
 
-function fixture(prompt = "", rows = defaultRows) {
+type Fg = ViewerEnvironment["theme"]["fg"];
+const plain: Fg = (_color, text) => text;
+const tagged: Fg = (color, text) => `<${color}>${text}`;
+
+function fixture(prompt = "", rows = defaultRows, fg = plain) {
   const state = { closed: false, copied: false, rendered: false, rows };
   const environment: ViewerEnvironment = {
     close: () => {
@@ -27,14 +35,14 @@ function fixture(prompt = "", rows = defaultRows) {
     requestRender: () => {
       state.rendered = true;
     },
-    theme: { bold: (text) => text, fg: (_color, text) => text },
+    theme: { bold: (text) => text, fg },
   };
   const viewer = createPromptViewer(prompt, environment);
-  const lines = () =>
-    viewer.render(normalWidth).map((line) => stripTerminalSequences(line));
+  const lines = (width = normalWidth) =>
+    viewer.render(width).map((line) => stripTerminalSequences(line));
   const text = () => lines().join("\n");
-  const footer = () => lines().at(-1) ?? "";
-  return { footer, state, text, viewer };
+  const header = (width = normalWidth) => lines(width)[0] ?? "";
+  return { header, state, text, viewer };
 }
 
 function longPrompt(): string {
@@ -69,11 +77,27 @@ test("keeps narrow and Chinese content within the terminal dimensions", () => {
   }
 });
 
-test("shows the title, size, and short key hints", () => {
-  const { footer, text } = fixture("PROMPT BODY");
-  expect(text()).toContain("System prompt · 11 chars");
-  expect(footer()).toContain("q close · c copy · t taller · ? keys");
-  expect(footer()).toContain("1-1 / 1");
+test("shows the title and the keys that fit on the top ruler", () => {
+  const { header } = fixture("PROMPT BODY");
+  expect(header()).toBe(
+    "── System prompt · 11 chars · 1-1 / 1 ─────────── q close · c copy · t taller ──",
+  );
+  expect(header(wideWidth)).toEndWith(
+    "─ q close · c copy · t taller · j/k line · d/u half · f/b page · g/G ends ──",
+  );
+  expect(header(narrowHeader)).toBe(
+    "── System prompt · 11 chars · 1-1 / 1 ───",
+  );
+  for (const width of [normalWidth, wideWidth, narrowHeader]) {
+    expect(visibleWidth(header(width))).toBe(width);
+  }
+});
+
+test("colors keys apart from their labels", () => {
+  const { header } = fixture("PROMPT BODY", defaultRows, tagged);
+  expect(header(taggedWidth)).toContain(
+    "<accent>q<muted> close<dim> · <accent>c",
+  );
 });
 
 test("keeps prompt content visible even when chrome must be omitted", () => {
@@ -84,40 +108,28 @@ test("keeps prompt content visible even when chrome must be omitted", () => {
   }
 });
 
-test("toggles the full key list", () => {
-  const { state, text, viewer } = fixture("PROMPT BODY");
-  expect(text()).not.toContain("half page");
-  viewer.handleInput?.("?");
-  expect(state.rendered).toBe(true);
-  expect(text()).toContain("half page");
-  expect(text()).toContain("PROMPT BODY");
-  viewer.handleInput?.("?");
-  expect(text()).not.toContain("half page");
-});
-
 test("scrolls by line, half page, page, and ends", () => {
-  const { footer, viewer } = fixture(longPrompt());
+  const { header, viewer } = fixture(longPrompt());
   viewer.render(normalWidth);
   viewer.handleInput?.("j");
-  expect(footer()).toStartWith(" q close");
-  expect(footer()).toContain("2-");
+  expect(header()).toContain(" · 2-");
   viewer.handleInput?.("k");
   viewer.handleInput?.("d");
-  expect(footer()).not.toContain("1-");
+  expect(header()).not.toContain(" · 1-");
   viewer.handleInput?.("u");
-  expect(footer()).toContain("1-");
+  expect(header()).toContain(" · 1-");
   viewer.handleInput?.("f");
-  expect(footer()).not.toContain("1-");
+  expect(header()).not.toContain(" · 1-");
   viewer.handleInput?.("b");
-  expect(footer()).toContain("1-");
+  expect(header()).toContain(" · 1-");
   viewer.handleInput?.("G");
-  expect(footer()).toContain(`-${lineCount} / ${lineCount}`);
+  expect(header()).toContain(`-${lineCount} / ${lineCount}`);
   viewer.handleInput?.("g");
-  expect(footer()).toContain("1-");
+  expect(header()).toContain(" · 1-");
 });
 
 test("forwards the configured wheel delta", () => {
-  const { footer, viewer } = fixture(longPrompt());
+  const { header, viewer } = fixture(longPrompt());
   viewer.render(normalWidth);
   viewer.handleMouse?.({
     alt: false,
@@ -133,15 +145,15 @@ test("forwards the configured wheel delta", () => {
     x: 0,
     y: 0,
   });
-  expect(footer()).toContain(`-${lineCount} / ${lineCount}`);
+  expect(header()).toContain(`-${lineCount} / ${lineCount}`);
 });
 
 test("supports taller view, resize, and invalidation", () => {
-  const { footer, state, viewer } = fixture(longPrompt());
+  const { header, state, viewer } = fixture(longPrompt());
   const original = viewer.render(normalWidth).length;
   viewer.handleInput?.("t");
   expect(viewer.render(normalWidth).length).toBeGreaterThan(original);
-  expect(footer()).toContain("t shorter");
+  expect(header()).toContain("t shorter");
   state.rows = 1;
   viewer.invalidate();
   expect(viewer.render(normalWidth)).toHaveLength(1);
