@@ -4,10 +4,8 @@ import {
   createStatusFooter,
   renderStatusLine,
 } from "../../src/statusline/render";
-import type { FooterSnapshot } from "../../src/statusline/render";
+import type { FooterSnapshot, FooterTheme } from "../../src/statusline/render";
 import { collectUsage } from "../../src/statusline/stats";
-import { isFlavor } from "../../src/statusline/palette";
-import type { FooterTheme } from "../../src/statusline/palette";
 
 const theme: FooterTheme = { bold: (text) => text, fg: (_color, text) => text };
 
@@ -188,11 +186,6 @@ test("shows unknown context and no-model without invented usage", () => {
   expect(text).toContain("ctx ?/0");
   expect(text).toContain("no-model");
   expect(text).not.toContain("in ");
-});
-
-test("validates Catppuccin flavor names", () => {
-  expect(isFlavor("mocha")).toBe(true);
-  expect(isFlavor("toString")).toBe(false);
 });
 
 test("reserves warning colors for context pressure", () => {

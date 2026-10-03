@@ -21,11 +21,12 @@
   },
   "pi": {
     "extensions": [
+      "./src/catppuccin/index.ts",
       "./src/context/index.ts",
       "./src/statusline/index.ts"
     ],
     "themes": [
-      "./src/statusline/themes/*.json"
+      "./src/catppuccin/themes/*.json"
     ]
   }
 }

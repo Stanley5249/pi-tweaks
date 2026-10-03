@@ -1,11 +1,15 @@
-import type { ContextUsage, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type {
+  ContextUsage,
+  Theme,
+  ThemeColor,
+} from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
-import type { FooterTheme } from "./palette";
 import { formatCwd, formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
 
+export type FooterTheme = Readonly<Pick<Theme, "bold" | "fg">>;
 export type FooterEnvironment = Readonly<{
   onBranchChange: (callback: () => void) => () => void;
   requestRender: () => void;

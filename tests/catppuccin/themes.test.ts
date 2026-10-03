@@ -15,7 +15,7 @@ test("bundled themes pass the Pi schema and render Chinese text", () => {
   for (const name of names) {
     const path = fileURLToPath(
       new URL(
-        `../../src/statusline/themes/catppuccin-${name}.json`,
+        `../../src/catppuccin/themes/catppuccin-${name}.json`,
         import.meta.url,
       ),
     );
