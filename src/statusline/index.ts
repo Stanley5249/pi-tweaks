@@ -11,14 +11,13 @@ import { collectUsage } from "./stats";
 import type { UsageEntry } from "./stats";
 
 export type StatusContext = Readonly<
-  Pick<ExtensionContext, "getContextUsage" | "mode"> & {
+  Pick<ExtensionContext, "getContextUsage" | "mode" | "thinkingLevel"> & {
     model?: StatusModel | undefined;
     sessionManager: Readonly<{
       getBranch: () => readonly UsageEntry[];
       getCwd: () => string;
       getSessionName: () => string | undefined;
     }>;
-    thinkingLevel?: string | undefined;
     ui: Readonly<Pick<ExtensionUIContext, "notify" | "setFooter">>;
   }
 >;

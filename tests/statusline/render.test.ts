@@ -7,7 +7,11 @@ import {
 import type { FooterSnapshot, FooterTheme } from "../../src/statusline/render";
 import { collectUsage } from "../../src/statusline/stats";
 
-const theme: FooterTheme = { bold: (text) => text, fg: (_color, text) => text };
+const theme: FooterTheme = {
+  bold: (text) => text,
+  fg: (_color, text) => text,
+  getThinkingBorderColor: () => (text) => text,
+};
 
 const kilo = 1000;
 const cacheRead = 3000;
@@ -59,6 +63,7 @@ test("uses live theme helpers and disposes the branch subscription once", () => 
   const liveTheme: FooterTheme = {
     bold: (text) => text,
     fg: (_token, text) => `\u001B[${color}m${text}\u001B[39m`,
+    getThinkingBorderColor: () => (text) => text,
   };
   let renders = 0;
   let disposed = 0;
@@ -196,6 +201,7 @@ test("reserves warning colors for context pressure", () => {
       colors.push(color);
       return text;
     },
+    getThinkingBorderColor: () => (text) => text,
   };
   renderStatusLine(snapshot(), recordingTheme, wideTerminal);
   expect(colors).toContain("accent");
@@ -231,17 +237,19 @@ function recordColors(data: FooterSnapshot): Map<string, string> {
       colors.set(text, color);
       return text;
     },
+    getThinkingBorderColor: (level) => (text) => {
+      colors.set(text, `thinking:${level}`);
+      return text;
+    },
   };
   renderStatusLine(data, recordingTheme, wideTerminal);
   return colors;
 }
 
-test("colors thinking levels with the theme thinking tokens", () => {
-  expect(recordColors(snapshot()).get("high")).toBe("thinkingHigh");
-  const unknown = recordColors({ ...snapshot(), thinkingLevel: "custom" });
-  expect(unknown.get("custom")).toBe("muted");
-  const inherited = recordColors({ ...snapshot(), thinkingLevel: "toString" });
-  expect(inherited.get("toString")).toBe("muted");
+test("colors thinking levels like the editor border", () => {
+  expect(recordColors(snapshot()).get("high")).toBe("thinking:high");
+  const off = recordColors({ ...snapshot(), thinkingLevel: undefined });
+  expect(off.get("off")).toBe("thinking:off");
 });
 
 test("dims metric labels", () => {

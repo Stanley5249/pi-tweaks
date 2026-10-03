@@ -1,5 +1,6 @@
 import type {
   ContextUsage,
+  ExtensionContext,
   Theme,
   ThemeColor,
 } from "@earendil-works/pi-coding-agent";
@@ -9,7 +10,11 @@ import { sanitizeSingleLine } from "../terminal";
 import { formatCwd, formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
 
-export type FooterTheme = Readonly<Pick<Theme, "bold" | "fg">>;
+// Pi does not export ThinkingLevel from its package index.
+export type ThinkingLevel = NonNullable<ExtensionContext["thinkingLevel"]>;
+export type FooterTheme = Readonly<
+  Pick<Theme, "bold" | "fg" | "getThinkingBorderColor">
+>;
 export type FooterEnvironment = Readonly<{
   onBranchChange: (callback: () => void) => () => void;
   requestRender: () => void;
@@ -20,17 +25,6 @@ const contextWarning = 50;
 const contextCritical = 80;
 const costPrecision = 3;
 const minimumGap = 2;
-
-// Pi themes tune these tokens for the editor border, so the footer matches it.
-const thinkingColors: Readonly<Record<string, ThemeColor>> = {
-  high: "thinkingHigh",
-  low: "thinkingLow",
-  max: "thinkingMax",
-  medium: "thinkingMedium",
-  minimal: "thinkingMinimal",
-  off: "thinkingOff",
-  xhigh: "thinkingXhigh",
-};
 
 export type StatusModel = Readonly<{
   contextWindow: number;
@@ -47,7 +41,7 @@ export type FooterSnapshot = Readonly<{
   sessionName?: string | undefined;
   stats: UsageStats;
   statuses: readonly string[];
-  thinkingLevel?: string | undefined;
+  thinkingLevel?: ThinkingLevel | undefined;
 }>;
 
 function metric(
@@ -56,12 +50,6 @@ function metric(
   [color, value]: readonly [ThemeColor, string],
 ): string {
   return `${theme.fg("dim", label)} ${theme.fg(color, value)}`;
-}
-
-function thinkingColor(level: string): ThemeColor {
-  return Object.hasOwn(thinkingColors, level)
-    ? (thinkingColors[level] ?? "muted")
-    : "muted";
 }
 
 function contextColor(percent: number): ThemeColor {
@@ -155,10 +143,10 @@ function renderModel(
   const name = theme.bold(theme.fg("accent", model));
   const parts = [name];
   if (snapshot.model?.reasoning === true) {
-    const level = sanitizeSingleLine(snapshot.thinkingLevel ?? "off");
-    parts.push(
-      `${theme.fg("dim", "·")} ${theme.fg(thinkingColor(level), level)}`,
-    );
+    const level = snapshot.thinkingLevel ?? "off";
+    // Match the editor border, which uses the same theme helper.
+    const color = theme.getThinkingBorderColor(level);
+    parts.push(`${theme.fg("dim", "·")} ${color(level)}`);
   }
   const thinking = parts.join(" ");
   const full =
