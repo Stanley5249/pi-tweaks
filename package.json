@@ -22,6 +22,7 @@
   "pi": {
     "extensions": [
       "./src/context/index.ts",
+      "./src/fast/index.ts",
       "./src/statusline/index.ts"
     ],
     "themes": [
