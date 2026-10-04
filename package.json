@@ -18,6 +18,7 @@
   },
   "pi": {
     "extensions": [
+      "./src/agy/index.ts",
       "./src/catppuccin/index.ts",
       "./src/context/index.ts",
       "./src/fast/index.ts",
