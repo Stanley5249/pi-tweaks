@@ -4,29 +4,33 @@ set shell := ["pwsh", "-NoLogo", "-NoProfile", "-Command"]
 set default-list
 
 # Install project dependencies.
-install:
-    bun install
+install *args:
+    bun install {{ args }}
 
 # Format project files and recipes.
-fmt:
-    just --fmt
-    bunx oxfmt
+[parallel]
+fmt: _fmt-oxfmt _fmt-just
 
 # Verify formatting without rewriting files.
-fmt-check:
-    just --fmt --check
-    bunx oxfmt --check
+[parallel]
+fmt-check: (_fmt-oxfmt "--check") (_fmt-just "--check")
+
+_fmt-oxfmt *args:
+    bunx oxfmt {{ args }}
+
+_fmt-just *args:
+    just --fmt {{ args }}
 
 # Run strict lint and type checking through Oxc.
-lint:
-    bunx oxlint src tests
+lint *args:
+    bunx oxlint src tests {{ args }}
 
 # Run the source-preserving static gate.
 check: lint
 
 # Verify the toolchain with positive and negative fixtures.
-test:
-    bun test
+test *args:
+    bun test {{ args }}
 
 # Run all currently applicable verification gates.
 ci: fmt-check check test
