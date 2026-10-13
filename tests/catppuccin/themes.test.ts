@@ -4,7 +4,7 @@ import {
   loadThemeFromPath,
   setThemeJsonValidator,
 } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
-import { validateThemeJson } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-json.js";
+import { validateThemeJson } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 /* Pi does not export its schema validator; isolate the private API boundary
