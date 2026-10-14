@@ -1,6 +1,5 @@
 # pi-tweaks
 
-- **Agy**: Disable Antigravity search tool registration for the model.
 - **Catppuccin** (`/catppuccin`): Bundled Catppuccin themes for every flavor and
   a command to switch between them.
 - **Context** (`/context`): Preview the system prompt the model receives in a
