@@ -20,10 +20,8 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": false,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["node_modules", "user", "coverage"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
 }
