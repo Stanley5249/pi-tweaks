@@ -23,7 +23,7 @@ _fmt-just *args:
 
 # Run strict lint and type checking through Oxc.
 lint *args:
-    bunx oxlint src tests {{ args }}
+    bunx oxlint src tests scripts {{ args }}
 
 # Run the source-preserving static gate.
 check: lint
@@ -34,3 +34,7 @@ test *args:
 
 # Run all currently applicable verification gates.
 ci: fmt-check check test
+
+# Bundle installed npm Pi extensions to speed up startup.
+bundle *args:
+    bun run scripts/bundle.ts {{ args }}
