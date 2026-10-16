@@ -14,9 +14,6 @@ const narrowHeader = 41;
 const taggedWidth = 400;
 const narrowWidth = 2;
 const compactHeight = 8;
-const bodyAndFooterRows = 4;
-const bodyAndHeaderRows = 6;
-const shortRows = [1, narrowWidth, bodyAndFooterRows, bodyAndHeaderRows];
 
 type Fg = ViewerEnvironment["theme"]["fg"];
 const plain: Fg = (_color, text) => text;
@@ -101,7 +98,7 @@ test("colors keys apart from their labels", () => {
 });
 
 test("keeps prompt content visible even when chrome must be omitted", () => {
-  for (const rows of shortRows) {
+  for (const rows of [1, 2, 4, 6]) {
     const { text } = fixture("PROMPT BODY", rows);
     expect(text()).toContain("PROMPT BODY");
     expect(text()).not.toContain("1-0 /");

@@ -13,23 +13,16 @@ const theme: FooterTheme = {
   getThinkingBorderColor: () => (text) => text,
 };
 
-const kilo = 1000;
-const cacheRead = 3000;
 const contextWindow = 128_000;
 const contextPercent = 25;
-const warningPercent = 50;
-const criticalPercent = 80;
-const testCost = 0.125;
 const wideTerminal = 200;
-const compactWidth = 8;
 const normalWidth = 80;
 const narrowWidth = 24;
-const pathWidth = 32;
 
 function snapshot(): FooterSnapshot {
   return {
     branch: "main",
-    contextUsage: { contextWindow, percent: contextPercent, tokens: kilo },
+    contextUsage: { contextWindow, percent: contextPercent, tokens: 1000 },
     cwd: "project",
     model: {
       contextWindow,
@@ -43,10 +36,10 @@ function snapshot(): FooterSnapshot {
         message: {
           role: "assistant",
           usage: {
-            cacheRead,
-            cost: { total: testCost },
-            input: kilo,
-            output: kilo,
+            cacheRead: 3000,
+            cost: { total: 0.125 },
+            input: 1000,
+            output: 1000,
           },
         },
         type: "message",
@@ -137,7 +130,7 @@ test("shortens long paths before hiding the branch", () => {
     ...snapshot(),
     cwd: "a/very/long/path/that/would/otherwise/hide/the/branch",
   };
-  const [top] = renderStatusLine(data, theme, pathWidth);
+  const [top] = renderStatusLine(data, theme, 32);
   expect(top).toContain("(main)");
   expect(top).not.toContain("session");
 });
@@ -149,7 +142,7 @@ test("bounds narrow and Chinese footer rows", () => {
     sessionName: "中文會話",
     statuses: ["中文狀態"],
   };
-  for (const width of [0, 1, compactWidth, wideTerminal]) {
+  for (const width of [0, 1, 8, wideTerminal]) {
     const lines = renderStatusLine(data, theme, width);
     for (const line of lines) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
@@ -188,13 +181,13 @@ test("reserves warning colors for context pressure", () => {
   expect(recordColors(snapshot()).get("model")).toBe("accent");
   const cases = [
     [contextPercent, "muted"],
-    [warningPercent, "warning"],
-    [criticalPercent, "error"],
+    [50, "warning"],
+    [80, "error"],
   ] as const;
   for (const [percent, color] of cases) {
     const colors = recordColors({
       ...snapshot(),
-      contextUsage: { contextWindow, percent, tokens: kilo },
+      contextUsage: { contextWindow, percent, tokens: 1000 },
     });
     expect(colors.get(`${percent}%`)).toBe(color);
   }

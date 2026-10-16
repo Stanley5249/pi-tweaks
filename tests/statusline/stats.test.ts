@@ -7,26 +7,17 @@ import {
 } from "../../src/statusline/stats";
 import type { TokenUsage, UsageEntry } from "../../src/statusline/stats";
 
-const kilo = 1000;
-const million = kilo * kilo;
-const decimalScale = 10;
-const decimalLimit = decimalScale * kilo;
-const cacheMultiple = 3;
-const firstCost = 0.25;
-const secondCost = 0.5;
-const half = 50;
-const latestRate = 75;
 const firstUsage = {
-  cacheRead: kilo,
+  cacheRead: 1000,
   cacheWrite: 0,
-  cost: { total: firstCost },
-  input: kilo,
-  output: kilo,
+  cost: { total: 0.25 },
+  input: 1000,
+  output: 1000,
 };
 const latestUsage = {
-  cacheRead: cacheMultiple * kilo,
-  cacheWrite: kilo,
-  cost: { total: secondCost },
+  cacheRead: 3000,
+  cacheWrite: 1000,
+  cost: { total: 0.5 },
   input: 0,
   output: 0,
 };
@@ -43,12 +34,12 @@ test("aggregates assistant usage on the supplied branch and uses the latest hit 
     assistant(latestUsage),
   ];
   expect(collectUsage(entries)).toEqual({
-    cacheRead: firstUsage.cacheRead + latestUsage.cacheRead,
-    cacheWrite: latestUsage.cacheWrite,
-    cost: firstCost + secondCost,
-    input: kilo,
-    latestCacheHitRate: latestRate,
-    output: kilo,
+    cacheRead: 4000,
+    cacheWrite: 1000,
+    cost: 0.75,
+    input: 1000,
+    latestCacheHitRate: 75,
+    output: 1000,
   });
 });
 
@@ -57,12 +48,12 @@ test("ignores missing usage and preserves the last valid prompt rate", () => {
     assistant(firstUsage),
     { message: { role: "assistant" }, type: "message" },
     {
-      message: { role: "assistant", usage: { output: kilo } },
+      message: { role: "assistant", usage: { output: 1000 } },
       type: "message",
     },
   ]);
-  expect(result.latestCacheHitRate).toBe(half);
-  expect(result.output).toBe(firstUsage.output + kilo);
+  expect(result.latestCacheHitRate).toBe(50);
+  expect(result.output).toBe(2000);
 });
 
 test("has no cache percentage before any prompt usage", () => {
@@ -78,10 +69,10 @@ test("has no cache percentage before any prompt usage", () => {
 
 test("formats token-count boundaries with the original precision", () => {
   expect(formatTokens(0)).toBe("0");
-  expect(formatTokens(kilo - 1)).toBe("999");
-  expect(formatTokens(kilo)).toBe("1.0k");
-  expect(formatTokens(decimalLimit)).toBe("10k");
-  expect(formatTokens(million)).toBe("1.0M");
+  expect(formatTokens(999)).toBe("999");
+  expect(formatTokens(1000)).toBe("1.0k");
+  expect(formatTokens(10_000)).toBe("10k");
+  expect(formatTokens(1_000_000)).toBe("1.0M");
 });
 
 test("shortens only the home directory and its descendants", () => {
