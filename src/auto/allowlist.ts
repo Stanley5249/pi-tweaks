@@ -1,78 +1,45 @@
 export type Shell = "bash" | "powershell";
 
-// Any of these can chain, redirect, substitute, or escape into another
-// command, so a command containing one goes to the classifier instead.
-const unsafeCharacters = /[|;&<>$`(){}\n\r]/u;
+// Operators, substitution, and quotes. A quoted word can hide an option from
+// the checks below, so any quote sends the command to the classifier.
+const unsafeCharacters = /[|;&<>$`(){}'"\n\r‘-‟]/u;
 
-const readOnlyGit = new Set([
-  "blame",
-  "diff",
-  "log",
-  "ls-files",
-  "rev-parse",
-  "show",
-  "status",
-]);
+// Bash also unescapes backslashes. PowerShell paths use them, so there only a
+// leading `\\` is unsafe, because a UNC path authenticates to a remote host.
+const unsafeBash = /\\|(?:^|\s)\/\//u;
+const unsafePowerShell = /(?:^|\s)(?:\\\\|\/\/)/u;
 
-const readOnlyBash = new Set([
-  "cat",
-  "df",
-  "du",
-  "file",
-  "git",
-  "grep",
-  "head",
-  "ls",
-  "pwd",
-  "rg",
-  "stat",
-  "tail",
-  "tree",
-  "wc",
-  "which",
-]);
+// Programs with no option that writes, runs, or reaches the network. Adding
+// one means checking all of its options, so the list stays short.
+const readOnlyBash = new Set(["cat", "head", "ls", "pwd", "wc"]);
 
 // PowerShell resolves names case-insensitively, so entries are lowercase.
 const readOnlyPowerShell = new Set([
   "cat",
+  "dir",
   "gc",
   "gci",
   "get-childitem",
-  "get-command",
   "get-content",
-  "get-item",
   "get-location",
-  "git",
   "gl",
   "ls",
   "pwd",
   "resolve-path",
-  "rg",
-  "select-string",
   "test-path",
 ]);
 
-// Options that make an otherwise read-only program run or write something.
-const unsafeOptions = ["--pre", "--output", "--ext-diff"];
-
-function hasUnsafeOption(words: readonly string[]): boolean {
-  return words.some((word) =>
-    unsafeOptions.some((option) => word.startsWith(option)),
-  );
-}
-
 export function isReadOnly(shell: Shell, command: string): boolean {
-  if (unsafeCharacters.test(command)) {
+  const unsafe = shell === "bash" ? unsafeBash : unsafePowerShell;
+  if (unsafeCharacters.test(command) || unsafe.test(command)) {
     return false;
   }
-  const words = command.trim().split(/\s+/u);
-  const program = shell === "powershell" ? words[0]?.toLowerCase() : words[0];
+  const [first = "", ...rest] = command.trim().split(/\s+/u);
+  const program = shell === "powershell" ? first.toLowerCase() : first;
   const allowed = shell === "powershell" ? readOnlyPowerShell : readOnlyBash;
-  if (program === undefined || !allowed.has(program)) {
-    return false;
+  // `git status` takes no option that writes or runs a program.
+  if (program === "git") {
+    return rest.join(" ") === "status";
   }
-  if (hasUnsafeOption(words)) {
-    return false;
-  }
-  return program !== "git" || readOnlyGit.has(words[1] ?? "");
+  return allowed.has(program);
 }

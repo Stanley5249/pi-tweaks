@@ -10,7 +10,7 @@ export type Verdict =
 // pi-ai owns these types; deriving them from pi's registry keeps one
 // source of truth and satisfies the readonly-parameter lint.
 type Classify = ExtensionContext["modelRegistry"]["classify"];
-type Classifier = Parameters<Classify>[0];
+export type Classifier = Parameters<Classify>[0];
 type ClassifierContext = Parameters<Classify>[1];
 type ClassifierResult = Awaited<ReturnType<Classify>>;
 

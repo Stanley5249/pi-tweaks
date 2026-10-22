@@ -4,28 +4,51 @@ import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-const Rules = Type.Array(Type.String());
-const Models = Type.Array(Type.String({ pattern: "^[^/]+/.+$" }));
+/**
+ * Config for the `auto` extension, read from `<agent-dir>/auto-mode.json` and
+ * `<project>/.pi/auto-mode.json`. The schema descriptions are the reference.
+ */
+const Deny = Type.Array(Type.String(), {
+  description: "Prose rules for actions the classifier should block.",
+});
 
-// A repository can only add context and deny rules. Allow rules, models,
-// thresholds, and the switch stay global so a cloned repository cannot
-// loosen the guard.
+// A repository can only add deny rules. Everything else, including
+// `environment`, which the classifier trusts, stays global so a cloned
+// repository cannot loosen the guard.
 export const ProjectConfig = Type.Object(
-  {
-    deny: Type.Optional(Rules),
-    environment: Type.Optional(Rules),
-  },
+  { deny: Type.Optional(Deny) },
   { additionalProperties: false },
 );
 
+const Allow = Type.Array(Type.String(), {
+  description: "Prose rules for actions the classifier should allow.",
+});
+const Enabled = Type.Boolean({
+  description:
+    "Guard state at startup. Unset means on whenever a classifier is available.",
+});
+const Environment = Type.Array(Type.String(), {
+  description: "Facts about trusted hosts, repositories, and data.",
+});
+const Model = Type.String({ pattern: "^[^/]+/.+$" });
+const Models = Type.Array(Model, {
+  description:
+    "Classifier models as `provider/id`. The first available one is used.",
+});
+const Threshold = Type.Number({
+  description: "Minimum allow probability. A lower one blocks.",
+  maximum: 1,
+  minimum: 0,
+});
+
 export const GlobalConfig = Type.Object(
   {
-    allow: Type.Optional(Rules),
-    deny: Type.Optional(Rules),
-    enabled: Type.Optional(Type.Boolean()),
-    environment: Type.Optional(Rules),
+    allow: Type.Optional(Allow),
+    deny: Type.Optional(Deny),
+    enabled: Type.Optional(Enabled),
+    environment: Type.Optional(Environment),
     models: Type.Optional(Models),
-    threshold: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
+    threshold: Type.Optional(Threshold),
   },
   { additionalProperties: false },
 );
@@ -33,11 +56,9 @@ export const GlobalConfig = Type.Object(
 export type AutoConfig = Readonly<{
   allow: readonly string[];
   deny: readonly string[];
-  enabled: boolean;
+  enabled?: boolean | undefined;
   environment: readonly string[];
-  /** Classifier models as `provider/id`; the first available one is used. */
   models: readonly string[];
-  /** Minimum allow probability; lower blocks the command. */
   threshold: number;
 }>;
 
@@ -51,7 +72,6 @@ export const CONFIG_FILE = "auto-mode.json";
 export const defaultConfig: AutoConfig = {
   allow: [],
   deny: [],
-  enabled: false,
   environment: [],
   models: ["openai/gpt-6-luna", "typesafe/jev-latest"],
   threshold: 0.5,
@@ -93,14 +113,10 @@ export async function readConfig<Schema extends TSchema>(
 
 export function mergeConfig(
   global: Partial<AutoConfig> = {},
-  project: Readonly<Partial<Pick<AutoConfig, "deny" | "environment">>> = {},
+  project: Readonly<Partial<Pick<AutoConfig, "deny">>> = {},
 ): AutoConfig {
   const config = { ...defaultConfig, ...global };
-  return {
-    ...config,
-    deny: [...config.deny, ...(project.deny ?? [])],
-    environment: [...config.environment, ...(project.environment ?? [])],
-  };
+  return { ...config, deny: [...config.deny, ...(project.deny ?? [])] };
 }
 
 export async function loadConfig(

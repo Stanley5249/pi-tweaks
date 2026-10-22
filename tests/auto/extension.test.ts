@@ -1,15 +1,32 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import type { ClassifierRegistry } from "../../src/auto/classify";
 import { collectTranscript, findClassifier } from "../../src/auto/classify";
-import autoExtension, {
-  createAutoController,
+import {
   createBlockCounter,
   decide,
   maxConsecutiveBlocks,
+} from "../../src/auto/blocks";
+import autoExtension, {
+  createAutoController,
   runAutoCommand,
   shellCallOf,
 } from "../../src/auto/index";
-import type { AutoAPI, AutoContext } from "../../src/auto/index";
+import type {
+  AutoAPI,
+  AutoContext,
+  AutoController,
+} from "../../src/auto/index";
+
+// No config files exist here, so the defaults apply.
+const noConfig = join(import.meta.dir, "missing");
+
+async function enabledController(ctx: AutoContext): Promise<AutoController> {
+  const controller = createAutoController();
+  controller.setEnabled(ctx, true);
+  await controller.load(ctx, noConfig);
+  return controller;
+}
 
 type Classifier = Awaited<
   ReturnType<ClassifierRegistry["getAvailableOfType"]>
@@ -127,6 +144,17 @@ test("decide escalates to the user after repeated blocks", () => {
   expect(decide({ kind: "error", reason: "down" }, blocks).kind).toBe("ask");
 });
 
+test("the total limit asks once and then starts over", () => {
+  const blocks = createBlockCounter();
+  const asks = Array.from({ length: 40 }, () => {
+    blocks.allow();
+    return blocks.block();
+  });
+  expect(asks.filter(Boolean)).toHaveLength(2);
+  expect(asks[19]).toBe(true);
+  expect(asks[39]).toBe(true);
+});
+
 test("guard passes through when disabled or read-only", async () => {
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0));
   const { ctx } = createContext(registry);
@@ -143,8 +171,7 @@ test("guard follows the classifier and its threshold", async () => {
   let probability = 0.9;
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(probability));
   const { ctx } = createContext(registry);
-  const controller = createAutoController();
-  controller.setEnabled(ctx, true);
+  const controller = await enabledController(ctx);
   expect(await controller.guard(rm, ctx)).toBeUndefined();
   probability = 0.1;
   const result = await controller.guard(rm, ctx);
@@ -156,8 +183,8 @@ test("guard follows the classifier and its threshold", async () => {
 test("classifier errors ask the user, or block without a UI", async () => {
   const registry = fakeRegistry([], () => bool(1));
   const headless = createContext(registry);
-  const controller = createAutoController();
-  controller.setEnabled(headless.ctx, true);
+  const controller = await enabledController(headless.ctx);
+  expect(headless.notes.at(-1)).toContain("no classifier available");
   const headlessResult = await controller.guard(rm, headless.ctx);
   expect(headlessResult?.block).toBe(true);
 
@@ -168,6 +195,36 @@ test("classifier errors ask the user, or block without a UI", async () => {
   const refusing = createContext(registry, "Block");
   const refusedResult = await controller.guard(rm, refusing.ctx);
   expect(refusedResult?.block).toBe(true);
+});
+
+test("an aborted classification blocks without a dialog", async () => {
+  const registry = fakeRegistry(["openai/gpt-6-luna"], () => ({
+    ...bool(0),
+    stopReason: "aborted",
+  }));
+  const { ctx, prompts } = createContext(registry, "Allow once");
+  const controller = await enabledController({
+    ...ctx,
+    signal: AbortSignal.abort(),
+  });
+  const result = await controller.guard(rm, {
+    ...ctx,
+    signal: AbortSignal.abort(),
+  });
+  expect(controller.isEnabled()).toBe(true);
+  expect(result?.block).toBe(true);
+  expect(prompts).toHaveLength(0);
+});
+
+test("/auto survives a new session", async () => {
+  const { ctx } = createContext(fakeRegistry([], () => bool(1)));
+  const controller = createAutoController();
+  await controller.load(ctx, noConfig);
+  // On by default, but not without a classifier.
+  expect(controller.isEnabled()).toBe(false);
+  controller.setEnabled(ctx, true);
+  await controller.load(ctx, noConfig);
+  expect(controller.isEnabled()).toBe(true);
 });
 
 test("shellCallOf picks bash and powershell commands only", () => {
@@ -183,13 +240,21 @@ test("shellCallOf picks bash and powershell commands only", () => {
   ).toBeUndefined();
 });
 
-test("/auto toggles and accepts on and off", () => {
-  const { ctx, notes } = createContext(fakeRegistry([], () => bool(1)));
+test("/auto shows status, and on and off set it", async () => {
+  const { ctx, notes } = createContext(
+    fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
+  );
   const controller = createAutoController();
-  runAutoCommand("", ctx, controller);
+  await controller.load(ctx, noConfig);
   expect(controller.isEnabled()).toBe(true);
+  runAutoCommand("", ctx, controller);
+  expect(notes.at(-1)).toBe("Auto mode is on, using openai/gpt-6-luna");
   runAutoCommand("off", ctx, controller);
   expect(controller.isEnabled()).toBe(false);
+  runAutoCommand("", ctx, controller);
+  expect(notes.at(-1)).toBe("Auto mode is off");
+  runAutoCommand("on", ctx, controller);
+  expect(controller.isEnabled()).toBe(true);
   runAutoCommand("maybe", ctx, controller);
   expect(notes.at(-1)).toBe("Usage: /auto [on|off]");
 });

@@ -1,10 +1,20 @@
 /**
  * Auto mode: a command guard modeled on Claude Code's auto mode.
  *
- * Read-only commands in `allowlist.ts` run directly. Other `bash` and
- * `powershell` calls go to a classifier model with the user's messages and
- * recent tool calls. A block goes back to the model with the reason, and the
- * user decides after repeated blocks or when the classifier fails.
+ * ```text
+ * tool_call (bash or powershell)
+ *   |-- guard off, or a read-only command (allowlist.ts) -> run
+ *   `-- classifier (classify.ts)
+ *         |-- allow -> run, and reset the block streak
+ *         |-- block -> the reason goes back to the model
+ *         |     after too many blocks (blocks.ts) -> ask the user
+ *         |-- error -> ask the user
+ *         `-- aborted -> block
+ * ```
+ *
+ * Without a UI, asking the user blocks. The guard starts on when a classifier
+ * is available, unless the config or `/auto` says otherwise. config.ts
+ * describes the config files.
  */
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
@@ -15,7 +25,14 @@ import type {
 import { isReadOnly } from "./allowlist";
 import type { Shell } from "./allowlist";
 import { classifyCommand, collectTranscript, findClassifier } from "./classify";
-import type { ClassifierRegistry, TranscriptEntry, Verdict } from "./classify";
+import type {
+  Classifier,
+  ClassifierRegistry,
+  TranscriptEntry,
+  Verdict,
+} from "./classify";
+import { createBlockCounter, decide } from "./blocks";
+import type { Action } from "./blocks";
 import { defaultConfig, loadConfig } from "./config";
 import type { AutoConfig } from "./config";
 
@@ -42,14 +59,10 @@ export type GuardResult = ToolCallEventResult | undefined;
 export type AutoController = Readonly<{
   guard: (call: ShellCall, ctx: AutoContext) => Promise<GuardResult>;
   isEnabled: () => boolean;
+  status: () => string;
   load: (ctx: AutoContext, agentDir: string) => Promise<void>;
   setEnabled: (ctx: AutoContext, enabled: boolean) => void;
 }>;
-
-// Claude Code's auto mode hands control back to the user after this many
-// blocks in a row or in one session.
-export const maxConsecutiveBlocks = 3;
-export const maxTotalBlocks = 20;
 
 const allowOnce = "Allow once";
 
@@ -74,17 +87,24 @@ export async function askUser(
   };
 }
 
+type Session = Readonly<{
+  config: AutoConfig;
+  classifier: Classifier | undefined;
+}>;
+
+function noClassifier(config: AutoConfig): string {
+  return `no classifier available from ${config.models.join(", ")}`;
+}
+
 async function classify(
   call: ShellCall,
   ctx: AutoContext,
-  config: AutoConfig,
+  session: Session,
 ): Promise<Verdict> {
-  const model = await findClassifier(ctx.modelRegistry, config.models);
+  const { config } = session;
+  const model = session.classifier;
   if (model === undefined) {
-    return {
-      kind: "error",
-      reason: `no classifier available from ${config.models.join(", ")}`,
-    };
+    return { kind: "error", reason: noClassifier(config) };
   }
   return classifyCommand(ctx.modelRegistry, model, {
     ...call,
@@ -95,78 +115,62 @@ async function classify(
   });
 }
 
-export type BlockCounter = Readonly<{
-  /** Records a block; true means the user should decide this time. */
-  block: () => boolean;
-  allow: () => void;
-  reset: () => void;
-}>;
-
-export function createBlockCounter(): BlockCounter {
-  let consecutive = 0;
-  let total = 0;
-  return {
-    allow: () => {
-      consecutive = 0;
-    },
-    block: () => {
-      consecutive += 1;
-      total += 1;
-      if (consecutive < maxConsecutiveBlocks && total < maxTotalBlocks) {
-        return false;
-      }
-      consecutive = 0;
-      return true;
-    },
-    reset: () => {
-      consecutive = 0;
-      total = 0;
-    },
-  };
+async function respond(
+  action: Action,
+  call: ShellCall,
+  ctx: AutoContext,
+): Promise<GuardResult> {
+  if (ctx.signal?.aborted === true) {
+    return { block: true, reason: "Aborted by the user." };
+  }
+  if (action.kind === "ask") {
+    return askUser(ctx, call, action.reason);
+  }
+  return action.kind === "block"
+    ? { block: true, reason: action.reason }
+    : undefined;
 }
 
-export type Action =
-  | Readonly<{ kind: "allow" }>
-  | Readonly<{ kind: "ask" | "block"; reason: string }>;
-
-export function decide(verdict: Verdict, blocks: BlockCounter): Action {
-  if (verdict.kind === "allow") {
-    blocks.allow();
-    return verdict;
+function statusText(enabled: boolean, session: Session): string {
+  const model = session.classifier;
+  if (!enabled) {
+    return model === undefined
+      ? `Auto mode is off: ${noClassifier(session.config)}`
+      : "Auto mode is off";
   }
-  if (verdict.kind === "error") {
-    return {
-      kind: "ask",
-      reason: `Auto mode cannot decide: ${verdict.reason}`,
-    };
-  }
-  return { kind: blocks.block() ? "ask" : "block", reason: verdict.reason };
+  return model === undefined
+    ? `Auto mode is on, but ${noClassifier(session.config)}`
+    : `Auto mode is on, using ${model.provider}/${model.id}`;
 }
 
 export function createAutoController(): AutoController {
-  let config = defaultConfig;
+  let session: Session = { classifier: undefined, config: defaultConfig };
   let enabled = false;
+  // Set by `/auto`, so a new, resumed, or forked session keeps the choice.
+  const chosen: { enabled?: boolean } = {};
   const blocks = createBlockCounter();
 
-  function sync(ctx: AutoContext): void {
-    ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
-  }
-
   async function load(ctx: AutoContext, agentDir: string): Promise<void> {
-    const loaded = await loadConfig(agentDir, ctx.cwd);
-    ({ config } = loaded);
-    ({ enabled } = config);
+    const { config, problems } = await loadConfig(agentDir, ctx.cwd);
+    const classifier = await findClassifier(ctx.modelRegistry, config.models);
+    session = { classifier, config };
+    // On by default, but only an explicit choice runs without a classifier.
+    enabled = chosen.enabled ?? config.enabled ?? classifier !== undefined;
     blocks.reset();
-    for (const problem of loaded.problems) {
+    for (const problem of problems) {
       ctx.ui.notify(`Auto mode: ${problem}`, "warning");
     }
-    sync(ctx);
+    ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
+    if (classifier === undefined) {
+      ctx.ui.notify(statusText(enabled, session), "warning");
+    }
   }
 
   function setEnabled(ctx: AutoContext, value: boolean): void {
     enabled = value;
-    sync(ctx);
-    ctx.ui.notify(`Auto mode ${enabled ? "enabled" : "disabled"}`, "info");
+    chosen.enabled = value;
+    ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
+    ctx.ui.notify(statusText(enabled, session), "info");
   }
 
   async function guard(
@@ -176,16 +180,17 @@ export function createAutoController(): AutoController {
     if (!enabled || isReadOnly(call.shell, call.command)) {
       return undefined;
     }
-    const action = decide(await classify(call, ctx, config), blocks);
-    if (action.kind === "allow") {
-      return undefined;
-    }
-    return action.kind === "ask"
-      ? askUser(ctx, call, action.reason)
-      : { block: true, reason: action.reason };
+    const action = decide(await classify(call, ctx, session), blocks);
+    return respond(action, call, ctx);
   }
 
-  return { guard, isEnabled: () => enabled, load, setEnabled };
+  return {
+    guard,
+    isEnabled: () => enabled,
+    load,
+    setEnabled,
+    status: () => statusText(enabled, session),
+  };
 }
 
 export function shellCallOf(event: ToolCall): ShellCall | undefined {
@@ -206,7 +211,7 @@ export function runAutoCommand(
 ): void {
   switch (args.trim().toLowerCase()) {
     case "": {
-      controller.setEnabled(ctx, !controller.isEnabled());
+      ctx.ui.notify(controller.status(), "info");
       break;
     }
     case "on": {
@@ -237,7 +242,7 @@ export default function autoExtension(pi: AutoAPI): void {
   });
 
   pi.registerCommand("auto", {
-    description: "Toggle the auto mode command guard (/auto [on|off])",
+    description: "Show or set the auto mode command guard (/auto [on|off])",
     handler: async (args: string, ctx: AutoContext) => {
       runAutoCommand(args, ctx, controller);
     },
