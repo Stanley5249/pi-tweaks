@@ -1,3 +1,7 @@
+/**
+ * Fast mode: adds `service_tier: "priority"` to requests for the `openai` and
+ * `openai-codex` providers while `/fast on` is set.
+ */
 import type {
   ExtensionAPI,
   ExtensionUIContext,
@@ -48,8 +52,7 @@ export type FastState = Readonly<{
   set: (value: boolean) => void;
 }>;
 
-// pi replaces the extension runtime on /new, /resume, /fork, and /reload, so
-// the choice lives on globalThis to last for the pi process.
+// The `/fast` choice outlives the extension runtime.
 const stateKey = Symbol.for("pi-tweaks.fast.enabled");
 
 const processState: FastState = {

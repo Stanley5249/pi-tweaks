@@ -147,8 +147,7 @@ export type Choice = Readonly<{
   set: (value: boolean) => void;
 }>;
 
-// pi replaces the extension runtime on /new, /resume, /fork, and /reload, so
-// the `/auto` choice lives on globalThis to last for the pi process.
+// The `/auto` choice outlives the extension runtime.
 const choiceKey = Symbol.for("pi-tweaks.auto.enabled");
 
 const processChoice: Choice = {

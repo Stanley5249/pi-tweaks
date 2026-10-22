@@ -90,7 +90,7 @@ async function readText(path: string): Promise<string | undefined> {
   }
 }
 
-/** Reads one config file; a missing file is empty, an invalid one is ignored. */
+/** Reads one config file. A missing file is empty and an invalid one is ignored. */
 export async function readConfig<Schema extends TSchema>(
   path: string,
   schema: Schema,

@@ -3,6 +3,7 @@
 ## Architecture
 
 - Keep each extension self-contained.
+- Follow `docs/design.md` for conventions shared by all extensions.
 
 ## Development
 

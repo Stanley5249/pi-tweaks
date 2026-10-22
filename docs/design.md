@@ -16,8 +16,9 @@ its module comments.
 
 ## Config
 
-- Global file: `<agent-dir>/<name>.json`, from `getAgentDir()`.
-- Project file: `<project>/.pi/<name>.json`, with a subset of fields.
+- Global file: `<agent-dir>/<file>.json`, from `getAgentDir()`. Each extension
+  picks its file name, such as `auto-mode.json`.
+- Project file: `<project>/.pi/<file>.json`, with a subset of fields.
 - Schema: TypeBox in the extension's `config.ts`, with a `description` per field
   as the reference.
 - Validation: `Value.Check`. An invalid file is ignored whole, and each
@@ -35,7 +36,8 @@ its module comments.
   it, as in `/auto` and `/fast`.
 - pi replaces the extension runtime on `/new`, `/resume`, `/fork`, and
   `/reload`. State that must outlive a session lives on `globalThis` under a
-  `Symbol.for("pi-tweaks.<name>.<key>")` key.
+  `Symbol.for("pi-tweaks.<extension>.<key>")` key, where `<extension>` is the
+  directory name in `src/`.
 
 ## Testing
 
