@@ -1,4 +1,6 @@
+/* oxlint-disable max-lines -- Keep controller and event-integration cases beside their shared fixtures. */
 import { expect, test } from "bun:test";
+import type { GuardMetadata } from "../../src/guard/render";
 import { join } from "node:path";
 import type { ClassifierRegistry } from "../../src/guard/classify";
 import { collectTranscript, findClassifier } from "../../src/guard/classify";
@@ -268,8 +270,176 @@ test("guardExtension registers its command and listeners", () => {
     registerCommand: (name: string) => {
       commands.push(name);
     },
+    registerToolRenderer: () => {},
   };
   guardExtension(fakePi);
   expect(commands).toEqual(["guard"]);
-  expect(events).toEqual(["session_start", "before_agent_start", "tool_call"]);
+  expect(events).toEqual([
+    "session_start",
+    "session_shutdown",
+    "before_agent_start",
+    "tool_call",
+    "tool_result",
+    "message_end",
+  ]);
+});
+
+test("metadata distinguishes bypass, classifier, and user decisions", async () => {
+  const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0.1));
+  const { ctx } = createContext(registry, "Allow once");
+  const controller = createGuardController(memoryChoice());
+  const metadata: GuardMetadata[] = [];
+  const record = (value: GuardMetadata): void => {
+    metadata.push(value);
+  };
+  await controller.guard(rm, ctx, record);
+  expect(metadata.at(-1)).toEqual({ decision: "allow", source: "off" });
+  controller.setEnabled(ctx, true);
+  await controller.load(ctx, noConfig);
+  await controller.guard({ command: "ls", shell: "bash" }, ctx, record);
+  expect(metadata.at(-1)).toEqual({ decision: "allow", source: "allowlist" });
+  await controller.guard(rm, ctx, record);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "block",
+    model: "openai/gpt-6-luna",
+    probability: 0.1,
+    source: "classifier",
+    verdict: "block",
+  });
+  await controller.guard(rm, ctx, record);
+  await controller.guard(rm, ctx, record);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "allow",
+    source: "user",
+    verdict: "block",
+  });
+});
+
+test("metadata records classifier success, exceptions, and cancellation", async () => {
+  const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0.9));
+  const { ctx } = createContext(registry);
+  const controller = await enabledController(ctx);
+  const metadata: GuardMetadata[] = [];
+  const record = (value: GuardMetadata): void => {
+    metadata.push(value);
+  };
+  await controller.guard(rm, ctx, record);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "allow",
+    probability: 0.9,
+    source: "classifier",
+    verdict: "allow",
+  });
+  const failing = {
+    ...ctx,
+    modelRegistry: {
+      ...registry,
+      classify: async (): Promise<Result> => {
+        throw new Error("offline");
+      },
+    },
+  };
+  const failed = await controller.guard(rm, failing, record);
+  expect(failed?.block).toBe(true);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "block",
+    reason: "Error: offline",
+    verdict: "error",
+  });
+  await controller.guard(rm, { ...ctx, signal: AbortSignal.abort() }, record);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "block",
+    verdict: "aborted",
+  });
+});
+
+type TestHandler = (
+  event: Readonly<Record<string, unknown>>,
+  ctx: GuardContext,
+) => unknown;
+
+function extensionHandlers(): Map<string, TestHandler> {
+  const handlers = new Map<string, TestHandler>();
+  guardExtension({
+    on: (name: string, handler: unknown) => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- tests dispatch matching Pi event payloads below
+      handlers.set(name, handler as TestHandler);
+      return () => {};
+    },
+    registerCommand: () => {},
+    registerToolRenderer: () => {},
+  });
+  return handlers;
+}
+
+test("parallel shell results preserve output and pair metadata by call id", async () => {
+  const handlers = extensionHandlers();
+  const { ctx } = createContext(fakeRegistry([], () => bool(1)));
+  const call = handlers.get("tool_call");
+  const result = handlers.get("tool_result");
+  await Promise.all([
+    call?.(
+      { input: { command: "ls" }, toolCallId: "bash-1", toolName: "bash" },
+      ctx,
+    ),
+    call?.(
+      { input: { command: "pwd" }, toolCallId: "ps-2", toolName: "powershell" },
+      ctx,
+    ),
+  ]);
+  const event = {
+    content: [{ text: "output", type: "text" }],
+    details: { fullOutputPath: "output.txt" },
+    toolCallId: "ps-2",
+  };
+  const annotation = result?.(event, ctx);
+  expect(annotation).toEqual({
+    details: {
+      fullOutputPath: "output.txt",
+      guard: { decision: "allow", source: "off" },
+    },
+  });
+  expect(event).toEqual({
+    content: [{ text: "output", type: "text" }],
+    details: { fullOutputPath: "output.txt" },
+    toolCallId: "ps-2",
+  });
+  expect(result?.(event, ctx)).toBeUndefined();
+  expect(result?.({ toolCallId: "other" }, ctx)).toBeUndefined();
+  expect(result?.({ toolCallId: "bash-1" }, ctx)).toMatchObject({
+    details: { guard: { source: "off" } },
+  });
+  await call?.(
+    { input: { command: "ls" }, toolCallId: "stale", toolName: "bash" },
+    ctx,
+  );
+  handlers.get("session_shutdown")?.({}, ctx);
+  expect(result?.({ toolCallId: "stale" }, ctx)).toBeUndefined();
+});
+
+test("finalized messages attach metadata when tool_result was skipped", async () => {
+  const handlers = extensionHandlers();
+  const { ctx } = createContext(fakeRegistry([], () => bool(1)));
+  await handlers.get("tool_call")?.(
+    { input: { command: "ls" }, toolCallId: "blocked", toolName: "bash" },
+    ctx,
+  );
+  const message = {
+    content: [{ text: "blocked", type: "text" }],
+    details: {},
+    isError: true,
+    role: "toolResult",
+    toolCallId: "blocked",
+    toolName: "bash",
+  };
+  const finalize = handlers.get("message_end");
+  expect(finalize?.({ message }, ctx)).toEqual({
+    message: {
+      ...message,
+      details: { guard: { decision: "allow", source: "off" } },
+    },
+  });
+  handlers.get("session_shutdown")?.({}, ctx);
+  expect(finalize?.({ message }, ctx)).toBeUndefined();
+  expect(finalize?.({ message: { role: "assistant" } }, ctx)).toEqual({});
 });

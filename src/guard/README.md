@@ -41,6 +41,12 @@ and `/reload`. The status bar shows `guard` while Guard is on.
 - After 3 blocks in a row, pi asks you, and the streak starts over. After 20
   blocks in total, pi asks you, and the total starts over.
 - When the classifier fails, pi asks you.
+- Each shell result shows a Guard label identifying classifier approval,
+  read-only rule approval, user approval, or Guard being off. Expand the tool
+  result to see the classifier model, verdict, allow probability, and request
+  duration when available. User decisions remain separate from classifier
+  verdicts. The annotation is saved in the tool result's `details.guard`, so it
+  survives session resume while the shell output stays unchanged.
 - Without a UI, such as in print mode, a command that needs your answer is
   blocked.
 

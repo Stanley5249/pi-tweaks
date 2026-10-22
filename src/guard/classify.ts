@@ -3,9 +3,9 @@ import type { Shell } from "./allowlist";
 import type { GuardConfig } from "./config";
 
 export type Verdict =
-  | Readonly<{ kind: "allow" }>
+  | Readonly<{ kind: "allow"; probability?: number }>
   | Readonly<{ kind: "aborted" }>
-  | Readonly<{ kind: "block"; reason: string }>
+  | Readonly<{ kind: "block"; reason: string; probability?: number }>
   | Readonly<{ kind: "error"; reason: string }>;
 
 // pi-ai owns these types; deriving them from pi's registry keeps one
@@ -250,11 +250,12 @@ export async function classifyCommand(
     };
   }
   if (answer.probability >= config.threshold) {
-    return { kind: "allow" };
+    return { kind: "allow", probability: answer.probability };
   }
   const { category } = result.answers;
   return {
     kind: "block",
+    probability: answer.probability,
     reason: blockReason(
       category?.type === "choice" ? category.choice : undefined,
     ),
