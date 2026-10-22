@@ -3,7 +3,7 @@ import {
   createBlockCounter,
   decide,
   maxConsecutiveBlocks,
-} from "../../src/auto/blocks";
+} from "../../src/guard/blocks";
 
 test("decide escalates to the user after repeated blocks", () => {
   const blocks = createBlockCounter();

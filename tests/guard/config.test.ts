@@ -7,14 +7,14 @@ import {
   defaultConfig,
   loadConfig,
   mergeConfig,
-} from "../../src/auto/config";
+} from "../../src/guard/config";
 
 async function withConfigs(
   global: string | undefined,
   project: string | undefined,
   check: (agentDir: string, cwd: string) => Promise<void>,
 ): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "pi-auto-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-guard-"));
   try {
     const agentDir = join(root, "agent");
     const cwd = join(root, "project");

@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Shell } from "./allowlist";
-import type { AutoConfig } from "./config";
+import type { GuardConfig } from "./config";
 
 export type Verdict =
   | Readonly<{ kind: "allow" }>
@@ -181,7 +181,7 @@ export type Request = Readonly<{
   transcript: Transcript;
   /** Context files pi loaded, such as AGENTS.md. */
   projectInstructions: string;
-  config: AutoConfig;
+  config: GuardConfig;
   signal?: AbortSignal | undefined;
 }>;
 
@@ -211,7 +211,7 @@ const labels: Readonly<Record<string, string>> = {
 
 function blockReason(category: string | undefined): string {
   const label = labels[category ?? ""] ?? "Not clearly authorized by the user";
-  return `Auto mode blocked this command [${label}]. Do not work around the block. Take a safer approach, or ask the user to run the command.`;
+  return `Guard blocked this command [${label}]. Do not work around the block. Take a safer approach, or ask the user to run the command.`;
 }
 
 export async function classifyCommand(

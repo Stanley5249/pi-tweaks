@@ -11,14 +11,15 @@ its module comments.
   for type checking.
 - Add another dependency only when it replaces logic that cannot stay simple. pi
   loads extensions through jiti on every start, so each one costs startup time.
-- Rejected: `just-bash` for `auto`, because it covers Bash only and the
+- Rejected: `just-bash` for `guard`, because it covers Bash only and the
   allowlist needs no parser.
 
 ## Config
 
-- Global file: `<agent-dir>/<file>.json`, from `getAgentDir()`. Each extension
-  picks its file name, such as `auto-mode.json`.
-- Project file: `<project>/.pi/<file>.json`, with a subset of fields.
+- Global file: `<agent-dir>/<extension>.json`, from `getAgentDir()`, where
+  `<extension>` is the directory name in `src/`, so `src/guard/` reads
+  `guard.json`.
+- Project file: `<project>/.pi/<extension>.json`, with a subset of fields.
 - Schema: TypeBox in the extension's `config.ts`, with a `description` per field
   as the reference.
 - Validation: `Value.Check`. An invalid file is ignored whole, and each
@@ -33,11 +34,10 @@ its module comments.
 ## State
 
 - A switch command shows the status without arguments, and `on` or `off` sets
-  it, as in `/auto` and `/fast`.
+  it, as in `/guard` and `/fast`.
 - pi replaces the extension runtime on `/new`, `/resume`, `/fork`, and
   `/reload`. State that must outlive a session lives on `globalThis` under a
-  `Symbol.for("pi-tweaks.<extension>.<key>")` key, where `<extension>` is the
-  directory name in `src/`.
+  `Symbol.for("pi-tweaks.<extension>.<key>")` key.
 
 ## Testing
 

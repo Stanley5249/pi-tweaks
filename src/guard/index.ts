@@ -1,5 +1,5 @@
 /**
- * Auto mode: a command guard modeled on Claude Code's auto mode.
+ * Guard: a shell command guard modeled on Claude Code's auto mode.
  *
  * ```text
  * tool_call (bash or powershell)
@@ -13,7 +13,7 @@
  * ```
  *
  * Without a UI, asking the user blocks. The guard starts on when a classifier
- * is available, unless the config or `/auto` says otherwise. config.ts
+ * is available, unless the config or `/guard` says otherwise. config.ts
  * describes the config files.
  */
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -42,9 +42,9 @@ import { processChoice } from "./choice";
 import type { Choice } from "./choice";
 import type { Action } from "./blocks";
 import { defaultConfig, loadConfig } from "./config";
-import type { AutoConfig } from "./config";
+import type { GuardConfig } from "./config";
 
-export type AutoContext = Readonly<{
+export type GuardContext = Readonly<{
   cwd: string;
   hasUI: boolean;
   modelRegistry: ClassifierRegistry;
@@ -57,7 +57,7 @@ type PromptOptions = Readonly<{
   contextFiles?: readonly ContextFile[] | undefined;
 }>;
 
-export type AutoAPI = Readonly<Pick<ExtensionAPI, "on" | "registerCommand">>;
+export type GuardAPI = Readonly<Pick<ExtensionAPI, "on" | "registerCommand">>;
 
 export type ShellCall = Readonly<{ shell: Shell; command: string }>;
 
@@ -68,19 +68,19 @@ export type ToolCall = Readonly<{
 
 export type GuardResult = ToolCallEventResult | undefined;
 
-export type AutoController = Readonly<{
-  guard: (call: ShellCall, ctx: AutoContext) => Promise<GuardResult>;
+export type GuardController = Readonly<{
+  guard: (call: ShellCall, ctx: GuardContext) => Promise<GuardResult>;
   isEnabled: () => boolean;
   status: () => string;
-  load: (ctx: AutoContext, agentDir: string) => Promise<void>;
-  setEnabled: (ctx: AutoContext, enabled: boolean) => void;
+  load: (ctx: GuardContext, agentDir: string) => Promise<void>;
+  setEnabled: (ctx: GuardContext, enabled: boolean) => void;
   setInstructions: (text: string) => void;
 }>;
 
 const allowOnce = "Allow once";
 
 export async function askUser(
-  ctx: AutoContext,
+  ctx: GuardContext,
   call: ShellCall,
   reason: string,
 ): Promise<GuardResult> {
@@ -101,7 +101,7 @@ export async function askUser(
 }
 
 type Session = Readonly<{
-  config: AutoConfig;
+  config: GuardConfig;
   classifier: Classifier | undefined;
   projectInstructions: string;
 }>;
@@ -112,19 +112,19 @@ const emptySession: Session = {
   projectInstructions: "",
 };
 
-function warn(ctx: AutoContext, messages: readonly string[]): void {
+function warn(ctx: GuardContext, messages: readonly string[]): void {
   for (const message of messages) {
-    ctx.ui.notify(`Auto mode: ${message}`, "warning");
+    ctx.ui.notify(`Guard: ${message}`, "warning");
   }
 }
 
-function noClassifier(config: AutoConfig): string {
+function noClassifier(config: GuardConfig): string {
   return `no classifier available from ${config.models.join(", ")}`;
 }
 
 async function classify(
   call: ShellCall,
-  ctx: AutoContext,
+  ctx: GuardContext,
   session: Session,
 ): Promise<Verdict> {
   const { config } = session;
@@ -147,7 +147,7 @@ async function classify(
 async function respond(
   action: Action,
   call: ShellCall,
-  ctx: AutoContext,
+  ctx: GuardContext,
 ): Promise<GuardResult> {
   if (action.kind === "ask") {
     return askUser(ctx, call, action.reason);
@@ -161,22 +161,22 @@ function statusText(enabled: boolean, session: Session): string {
   const model = session.classifier;
   if (!enabled) {
     return model === undefined
-      ? `Auto mode is off: ${noClassifier(session.config)}`
-      : "Auto mode is off";
+      ? `Guard is off: ${noClassifier(session.config)}`
+      : "Guard is off";
   }
   return model === undefined
-    ? `Auto mode is on, but ${noClassifier(session.config)}`
-    : `Auto mode is on, using ${model.provider}/${model.id}`;
+    ? `Guard is on, but ${noClassifier(session.config)}`
+    : `Guard is on, using ${model.provider}/${model.id}`;
 }
 
-export function createAutoController(
+export function createGuardController(
   choice: Choice = processChoice,
-): AutoController {
+): GuardController {
   let session = emptySession;
   let enabled = false;
   const blocks = createBlockCounter();
 
-  async function load(ctx: AutoContext, agentDir: string): Promise<void> {
+  async function load(ctx: GuardContext, agentDir: string): Promise<void> {
     const { config, problems } = await loadConfig(agentDir, ctx.cwd);
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
     session = { ...session, classifier, config };
@@ -184,21 +184,21 @@ export function createAutoController(
     const explicit = choice.get() ?? config.enabled;
     enabled = explicit ?? classifier !== undefined;
     blocks.reset();
-    ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
+    ctx.ui.setStatus("guard", enabled ? "guard" : undefined);
     const missing = classifier === undefined && explicit !== false;
     warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
   }
 
-  function setEnabled(ctx: AutoContext, value: boolean): void {
+  function setEnabled(ctx: GuardContext, value: boolean): void {
     enabled = value;
     choice.set(value);
-    ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
+    ctx.ui.setStatus("guard", enabled ? "guard" : undefined);
     ctx.ui.notify(statusText(enabled, session), "info");
   }
 
   async function guard(
     call: ShellCall,
-    ctx: AutoContext,
+    ctx: GuardContext,
   ): Promise<GuardResult> {
     if (!enabled || isReadOnly(call.shell, call.command)) {
       return undefined;
@@ -230,10 +230,10 @@ export function shellCallOf(event: ToolCall): ShellCall | undefined {
   return undefined;
 }
 
-export function runAutoCommand(
+export function runGuardCommand(
   args: string,
-  ctx: AutoContext,
-  controller: AutoController,
+  ctx: GuardContext,
+  controller: GuardController,
 ): void {
   switch (args.trim().toLowerCase()) {
     case "": {
@@ -249,16 +249,16 @@ export function runAutoCommand(
       break;
     }
     default: {
-      ctx.ui.notify("Usage: /auto [on|off]", "error");
+      ctx.ui.notify("Usage: /guard [on|off]", "error");
       break;
     }
   }
 }
 
-export default function autoExtension(pi: AutoAPI): void {
-  const controller = createAutoController();
+export default function guardExtension(pi: GuardAPI): void {
+  const controller = createGuardController();
 
-  pi.on("session_start", async (_event: unknown, ctx: AutoContext) => {
+  pi.on("session_start", async (_event: unknown, ctx: GuardContext) => {
     await controller.load(ctx, getAgentDir());
   });
 
@@ -272,15 +272,15 @@ export default function autoExtension(pi: AutoAPI): void {
     },
   );
 
-  pi.on("tool_call", async (event: ToolCall, ctx: AutoContext) => {
+  pi.on("tool_call", async (event: ToolCall, ctx: GuardContext) => {
     const call = shellCallOf(event);
     return call === undefined ? undefined : controller.guard(call, ctx);
   });
 
-  pi.registerCommand("auto", {
-    description: "Show or set the auto mode command guard (/auto [on|off])",
-    handler: async (args: string, ctx: AutoContext) => {
-      runAutoCommand(args, ctx, controller);
+  pi.registerCommand("guard", {
+    description: "Show or set the shell command guard (/guard [on|off])",
+    handler: async (args: string, ctx: GuardContext) => {
+      runGuardCommand(args, ctx, controller);
     },
   });
 }

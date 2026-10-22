@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { formatContextFiles } from "../../src/auto/classify";
+import { formatContextFiles } from "../../src/guard/classify";
 
 test("formatContextFiles labels each file and caps the length", () => {
   expect(

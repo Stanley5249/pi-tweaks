@@ -5,8 +5,8 @@ import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 /**
- * Config for the `auto` extension, read from `<agent-dir>/auto-mode.json` and
- * `<project>/.pi/auto-mode.json`. The schema descriptions are the reference.
+ * Config for the `guard` extension, read from `<agent-dir>/guard.json` and
+ * `<project>/.pi/guard.json`. The schema descriptions are the reference.
  */
 const Deny = Type.Array(Type.String(), {
   description: "Prose rules for actions the classifier should block.",
@@ -53,7 +53,7 @@ export const GlobalConfig = Type.Object(
   { additionalProperties: false },
 );
 
-export type AutoConfig = Readonly<{
+export type GuardConfig = Readonly<{
   allow: readonly string[];
   deny: readonly string[];
   enabled?: boolean | undefined;
@@ -63,13 +63,13 @@ export type AutoConfig = Readonly<{
 }>;
 
 export type LoadedConfig = Readonly<{
-  config: AutoConfig;
+  config: GuardConfig;
   problems: readonly string[];
 }>;
 
-export const CONFIG_FILE = "auto-mode.json";
+export const CONFIG_FILE = "guard.json";
 
-export const defaultConfig: AutoConfig = {
+export const defaultConfig: GuardConfig = {
   allow: [],
   deny: [],
   environment: [],
@@ -112,9 +112,9 @@ export async function readConfig<Schema extends TSchema>(
 }
 
 export function mergeConfig(
-  global: Partial<AutoConfig> = {},
-  project: Readonly<Partial<Pick<AutoConfig, "deny">>> = {},
-): AutoConfig {
+  global: Partial<GuardConfig> = {},
+  project: Readonly<Partial<Pick<GuardConfig, "deny">>> = {},
+): GuardConfig {
   const config = { ...defaultConfig, ...global };
   return { ...config, deny: [...config.deny, ...(project.deny ?? [])] };
 }

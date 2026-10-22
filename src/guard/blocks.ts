@@ -55,7 +55,7 @@ export function decide(verdict: Verdict, blocks: BlockCounter): Action {
   if (verdict.kind === "error") {
     return {
       kind: "ask",
-      reason: `Auto mode cannot decide: ${verdict.reason}`,
+      reason: `Guard cannot decide: ${verdict.reason}`,
     };
   }
   return { kind: blocks.block() ? "ask" : "block", reason: verdict.reason };

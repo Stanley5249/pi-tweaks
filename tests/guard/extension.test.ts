@@ -1,18 +1,18 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import type { ClassifierRegistry } from "../../src/auto/classify";
-import { collectTranscript, findClassifier } from "../../src/auto/classify";
-import autoExtension, {
-  createAutoController,
-  runAutoCommand,
+import type { ClassifierRegistry } from "../../src/guard/classify";
+import { collectTranscript, findClassifier } from "../../src/guard/classify";
+import guardExtension, {
+  createGuardController,
+  runGuardCommand,
   shellCallOf,
-} from "../../src/auto/index";
+} from "../../src/guard/index";
 import type {
-  AutoAPI,
-  AutoContext,
-  AutoController,
-} from "../../src/auto/index";
-import type { Choice } from "../../src/auto/choice";
+  GuardAPI,
+  GuardContext,
+  GuardController,
+} from "../../src/guard/index";
+import type { Choice } from "../../src/guard/choice";
 
 function memoryChoice(): Choice {
   const state: { value?: boolean } = {};
@@ -27,8 +27,8 @@ function memoryChoice(): Choice {
 // No config files exist here, so the defaults apply.
 const noConfig = join(import.meta.dir, "missing");
 
-async function enabledController(ctx: AutoContext): Promise<AutoController> {
-  const controller = createAutoController(memoryChoice());
+async function enabledController(ctx: GuardContext): Promise<GuardController> {
+  const controller = createGuardController(memoryChoice());
   controller.setEnabled(ctx, true);
   await controller.load(ctx, noConfig);
   return controller;
@@ -83,10 +83,10 @@ function bool(probability: number): Result {
 function createContext(
   registry: ClassifierRegistry,
   choice?: string,
-): { ctx: AutoContext; notes: string[]; prompts: string[] } {
+): { ctx: GuardContext; notes: string[]; prompts: string[] } {
   const notes: string[] = [];
   const prompts: string[] = [];
-  const ctx: AutoContext = {
+  const ctx: GuardContext = {
     cwd: "/repo",
     hasUI: choice !== undefined,
     modelRegistry: registry,
@@ -149,7 +149,7 @@ test("findClassifier takes the first available configured model", async () => {
 test("guard passes through when disabled or read-only", async () => {
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0));
   const { ctx } = createContext(registry);
-  const controller = createAutoController(memoryChoice());
+  const controller = createGuardController(memoryChoice());
   expect(await controller.guard(rm, ctx)).toBeUndefined();
   controller.setEnabled(ctx, true);
   expect(
@@ -212,15 +212,15 @@ test("an aborted classification blocks without a dialog", async () => {
   expect(prompts).toHaveLength(0);
 });
 
-test("/auto survives a new extension runtime", async () => {
+test("/guard survives a new extension runtime", async () => {
   const { ctx } = createContext(fakeRegistry([], () => bool(1)));
   const choice = memoryChoice();
-  const first = createAutoController(choice);
+  const first = createGuardController(choice);
   await first.load(ctx, noConfig);
   // On by default, but not without a classifier.
   expect(first.isEnabled()).toBe(false);
   first.setEnabled(ctx, true);
-  const second = createAutoController(choice);
+  const second = createGuardController(choice);
   await second.load(ctx, noConfig);
   expect(second.isEnabled()).toBe(true);
 });
@@ -238,29 +238,29 @@ test("shellCallOf picks bash and powershell commands only", () => {
   ).toBeUndefined();
 });
 
-test("/auto shows status, and on and off set it", async () => {
+test("/guard shows status, and on and off set it", async () => {
   const { ctx, notes } = createContext(
     fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
   );
-  const controller = createAutoController(memoryChoice());
+  const controller = createGuardController(memoryChoice());
   await controller.load(ctx, noConfig);
   expect(controller.isEnabled()).toBe(true);
-  runAutoCommand("", ctx, controller);
-  expect(notes.at(-1)).toBe("Auto mode is on, using openai/gpt-6-luna");
-  runAutoCommand("off", ctx, controller);
+  runGuardCommand("", ctx, controller);
+  expect(notes.at(-1)).toBe("Guard is on, using openai/gpt-6-luna");
+  runGuardCommand("off", ctx, controller);
   expect(controller.isEnabled()).toBe(false);
-  runAutoCommand("", ctx, controller);
-  expect(notes.at(-1)).toBe("Auto mode is off");
-  runAutoCommand("on", ctx, controller);
+  runGuardCommand("", ctx, controller);
+  expect(notes.at(-1)).toBe("Guard is off");
+  runGuardCommand("on", ctx, controller);
   expect(controller.isEnabled()).toBe(true);
-  runAutoCommand("maybe", ctx, controller);
-  expect(notes.at(-1)).toBe("Usage: /auto [on|off]");
+  runGuardCommand("maybe", ctx, controller);
+  expect(notes.at(-1)).toBe("Usage: /guard [on|off]");
 });
 
-test("autoExtension registers its command and listeners", () => {
+test("guardExtension registers its command and listeners", () => {
   const commands: string[] = [];
   const events: string[] = [];
-  const fakePi: AutoAPI = {
+  const fakePi: GuardAPI = {
     on: (event: string) => {
       events.push(event);
       return () => {};
@@ -269,7 +269,7 @@ test("autoExtension registers its command and listeners", () => {
       commands.push(name);
     },
   };
-  autoExtension(fakePi);
-  expect(commands).toEqual(["auto"]);
+  guardExtension(fakePi);
+  expect(commands).toEqual(["guard"]);
   expect(events).toEqual(["session_start", "before_agent_start", "tool_call"]);
 });

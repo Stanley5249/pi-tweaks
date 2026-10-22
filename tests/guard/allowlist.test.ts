@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { isReadOnly } from "../../src/auto/allowlist";
+import { isReadOnly } from "../../src/guard/allowlist";
 
 test("plain read-only commands skip the classifier", () => {
   expect(isReadOnly("bash", "ls -la src")).toBe(true);
-  expect(isReadOnly("bash", "head -n 20 src/auto/index.ts")).toBe(true);
+  expect(isReadOnly("bash", "head -n 20 src/guard/index.ts")).toBe(true);
   expect(isReadOnly("powershell", "Get-ChildItem -Recurse src")).toBe(true);
   expect(
     isReadOnly("powershell", String.raw`get-content src\auto\index.ts`),

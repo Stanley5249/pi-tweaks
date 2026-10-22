@@ -3,8 +3,8 @@ export type Choice = Readonly<{
   set: (value: boolean) => void;
 }>;
 
-// The `/auto` choice outlives the extension runtime.
-const choiceKey = Symbol.for("pi-tweaks.auto.enabled");
+// The `/guard` choice outlives the extension runtime.
+const choiceKey = Symbol.for("pi-tweaks.guard.enabled");
 
 export const processChoice: Choice = {
   get: () => {
