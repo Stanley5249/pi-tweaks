@@ -32,8 +32,9 @@ and `/reload`. The status bar shows `guard` while Guard is on.
 ## What happens to a command
 
 - A read-only program from the list in `allowlist.ts`, such as `ls`, `cat`, or
-  `Get-Content`, runs directly. An operator, a quote, a network share path, or a
-  backslash in bash sends the command to the classifier instead.
+  `Get-Content`, runs directly. An operator, a quote, a double separator such as
+  `//` or `\\`, or any backslash in bash sends the command to the classifier
+  instead.
 - An allowed command runs.
 - A blocked command does not run. The model gets the reason, such as
   `[Bypass review]`, and is told to find a safer approach.
