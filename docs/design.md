@@ -1,7 +1,6 @@
 # Design
 
-Conventions for every extension in `src/`. Usage of one extension lives in its
-README, and its implementation notes live in its module comments.
+Conventions for every extension in `src/`.
 
 ## Dependencies
 
@@ -18,8 +17,7 @@ README, and its implementation notes live in its module comments.
 
 - An extension that needs usage notes, such as setup or config, keeps them in
   `src/<extension>/README.md`.
-- Implementation notes stay in module comments, and config fields stay in the
-  schema descriptions.
+- Implementation notes stay in module comments.
 
 ## Config
 

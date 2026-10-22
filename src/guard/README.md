@@ -14,7 +14,7 @@ order:
 2. `typesafe/jev-latest`: set `TYPESAFE_API_KEY`.
 
 pi's `docs/models.md` lists the other classifier providers, and the `models`
-field below changes the order. Run `/guard` to see which model Guard uses.
+field below replaces this list. Run `/guard` to see which model Guard uses.
 
 When no classifier is available, Guard stays off and shows a warning. If you
 turn it on anyway with `/guard on` or `"enabled": true`, pi asks you about every
@@ -32,13 +32,13 @@ and `/reload`. The status bar shows `guard` while Guard is on.
 ## What happens to a command
 
 - A read-only program from the list in `allowlist.ts`, such as `ls`, `cat`, or
-  `Get-Content`, runs directly. An operator, a quote, or a path form that
-  `allowlist.ts` rejects sends the command to the classifier instead.
+  `Get-Content`, runs directly. An operator, a quote, a network share path, or a
+  backslash in bash sends the command to the classifier instead.
 - An allowed command runs.
 - A blocked command does not run. The model gets the reason, such as
   `[Bypass review]`, and is told to find a safer approach.
-- After 3 blocks in a row, or 20 in total, pi asks you instead, and that count
-  starts over.
+- After 3 blocks in a row, pi asks you, and the streak starts over. After 20
+  blocks in total, pi asks you, and the total starts over.
 - When the classifier fails, pi asks you.
 - Without a UI, such as in print mode, a command that needs your answer is
   blocked.
