@@ -27,7 +27,7 @@ command that is not read-only.
 - `/guard off`: turn Guard off.
 
 The choice lasts until pi exits, including across `/new`, `/resume`, `/fork`,
-and `/reload`. The status bar shows `guard` while Guard is on.
+and `/reload`. Run `/guard` to check the current state.
 
 ## What happens to a command
 
@@ -36,16 +36,17 @@ and `/reload`. The status bar shows `guard` while Guard is on.
   `//` or `\\`, or any backslash in bash sends the command to the classifier
   instead.
 - An allowed command runs.
-- A blocked command does not run. The model gets the reason, such as
-  `[Bypass review]`, and is told to find a safer approach.
+- A blocked command does not run. The model gets the risk description and is
+  told to find a safer approach.
 - After 3 blocks in a row, pi asks you, and the streak starts over. After 20
   blocks in total, pi asks you, and the total starts over.
 - When the classifier fails, pi asks you.
-- Each shell result shows a Guard label identifying classifier approval,
-  read-only rule approval, user approval, or Guard being off. Expand the tool
-  result to see the classifier model, verdict, allow probability, and request
-  duration when available. User decisions remain separate from classifier
-  verdicts. The annotation is saved in the tool result's `details.guard`, so it
+- Each shell result starts with `Allowed` or `Blocked` and identifies the
+  decision source, such as `Allowed by classifier`, `Allowed by read-only rule`,
+  or `Allowed by you`. When Guard is off, it shows `Allowed without checks`.
+  Missing classifiers and failed requests have distinct messages. Expand the
+  result to see the model, request duration, allow probability, and reason when
+  available. The annotation is saved in the tool result's `details.guard`, so it
   survives session resume while the shell output stays unchanged.
 - Without a UI, such as in print mode, a command that needs your answer is
   blocked.

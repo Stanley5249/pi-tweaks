@@ -59,7 +59,7 @@ test("a project config that tries to loosen the guard is ignored", async () => {
     expect(config.environment).toEqual([]);
     expect(config.deny).toEqual([]);
     expect(problems).toContain(
-      `${join(cwd, ".pi", CONFIG_FILE)}: / must not have additional properties`,
+      `Could not load Guard settings from ${join(cwd, ".pi", CONFIG_FILE)}\n/ must not have additional properties`,
     );
   });
 });

@@ -103,11 +103,16 @@ export async function readConfig<Schema extends TSchema>(
     }
     const problems = Value.Errors(schema, value).map(
       (error: Readonly<{ instancePath: string; message: string }>) =>
-        `${path}: ${error.instancePath || "/"} ${error.message}`,
+        `Could not load Guard settings from ${path}\n${error.instancePath || "/"} ${error.message}`,
     );
     return { problems, value: undefined };
   } catch (error) {
-    return { problems: [`${path}: ${String(error)}`], value: undefined };
+    return {
+      problems: [
+        `Could not load Guard settings from ${path}\n${String(error)}`,
+      ],
+      value: undefined,
+    };
   }
 }
 

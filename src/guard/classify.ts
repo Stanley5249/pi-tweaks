@@ -6,7 +6,7 @@ export type Verdict =
   | Readonly<{ kind: "allow"; probability?: number }>
   | Readonly<{ kind: "aborted" }>
   | Readonly<{ kind: "block"; reason: string; probability?: number }>
-  | Readonly<{ kind: "error"; reason: string }>;
+  | Readonly<{ kind: "error" | "unavailable"; reason: string }>;
 
 // pi-ai owns these types; deriving them from pi's registry keeps one
 // source of truth and satisfies the readonly-parameter lint.
@@ -201,17 +201,19 @@ const questions: ClassifierContext["questions"] = {
   },
 };
 
-const labels: Readonly<Record<string, string>> = {
-  boundary: "Trust boundary",
-  destroy: "Destroy or exfiltrate",
-  review: "Bypass review",
-  rule: "Deny rule",
-  security: "Weaken security",
+const reasons: Readonly<Record<string, string>> = {
+  boundary: "The command could cross a trust boundary.",
+  destroy: "The command could destroy or expose data.",
+  review: "The command could bypass review.",
+  rule: "The command could violate a deny rule or project instruction.",
+  security: "The command could weaken security.",
 };
 
 function blockReason(category: string | undefined): string {
-  const label = labels[category ?? ""] ?? "Not clearly authorized by the user";
-  return `Guard blocked this command [${label}]. Do not work around the block. Take a safer approach, or ask the user to run the command.`;
+  return (
+    reasons[category ?? ""] ??
+    "The command requires explicit user authorization."
+  );
 }
 
 export async function classifyCommand(
@@ -246,7 +248,7 @@ export async function classifyCommand(
     const detail = result.errorMessage ?? result.stopReason;
     return {
       kind: "error",
-      reason: `classifier ${model.provider}/${model.id} failed: ${detail}`,
+      reason: detail,
     };
   }
   if (answer.probability >= config.threshold) {

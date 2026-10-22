@@ -17,6 +17,26 @@ test("decide escalates to the user after repeated blocks", () => {
   expect(decide({ kind: "error", reason: "down" }, blocks).kind).toBe("ask");
 });
 
+test("approval reasons distinguish failed requests from unavailable classifiers", () => {
+  const blocks = createBlockCounter();
+  expect(
+    decide({ kind: "error", reason: "HTTP 429: rate limited" }, blocks),
+  ).toEqual({
+    kind: "ask",
+    reason: "The classifier request failed.\n\nHTTP 429: rate limited",
+  });
+  expect(
+    decide(
+      { kind: "unavailable", reason: "No configured classifier is available" },
+      blocks,
+    ),
+  ).toEqual({ kind: "ask", reason: "No configured classifier is available" });
+  expect(decide({ kind: "aborted" }, blocks)).toEqual({
+    kind: "block",
+    reason: "Blocked because the classifier request was cancelled.",
+  });
+});
+
 test("the total limit asks once and then starts over", () => {
   const blocks = createBlockCounter();
   const asks = Array.from({ length: 40 }, () => {

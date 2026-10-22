@@ -50,13 +50,25 @@ export function decide(verdict: Verdict, blocks: BlockCounter): Action {
     return verdict;
   }
   if (verdict.kind === "aborted") {
-    return { kind: "block", reason: "Aborted by the user." };
-  }
-  if (verdict.kind === "error") {
     return {
-      kind: "ask",
-      reason: `Guard cannot decide: ${verdict.reason}`,
+      kind: "block",
+      reason: "Blocked because the classifier request was cancelled.",
     };
   }
-  return { kind: blocks.block() ? "ask" : "block", reason: verdict.reason };
+  if (verdict.kind === "error" || verdict.kind === "unavailable") {
+    return {
+      kind: "ask",
+      reason:
+        verdict.kind === "error"
+          ? `The classifier request failed.\n\n${verdict.reason}`
+          : verdict.reason,
+    };
+  }
+  const ask = blocks.block();
+  return {
+    kind: ask ? "ask" : "block",
+    reason: ask
+      ? verdict.reason
+      : `${verdict.reason} Take a safer approach, or ask the user to run the command instead of working around the block.`,
+  };
 }

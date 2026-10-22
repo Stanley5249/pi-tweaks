@@ -122,7 +122,6 @@ function createContext(
         prompts.push(title);
         return choice;
       },
-      setStatus: () => {},
     },
   };
   return { ctx, notes, prompts };
@@ -169,7 +168,8 @@ test("guard follows the classifier and its threshold", async () => {
   probability = 0.1;
   const result = await controller.guard(rm, ctx);
   expect(result?.block).toBe(true);
-  expect(result?.reason).toContain("[Destroy or exfiltrate]");
+  expect(result?.reason).toContain("The command could destroy or expose data.");
+  expect(result?.reason).toContain("instead of working around the block");
   expect(registry.states[0]?.["command"]).toBe("rm -rf build");
   controller.setInstructions("Never delete build/");
   await controller.guard(rm, ctx);
@@ -182,13 +182,17 @@ test("classifier errors ask the user, or block without a UI", async () => {
   const registry = fakeRegistry([], () => bool(1));
   const headless = createContext(registry);
   const controller = await enabledController(headless.ctx);
-  expect(headless.notes.at(-1)).toContain("no classifier available");
+  expect(headless.notes.at(-1)).toContain(
+    "No configured classifier is available",
+  );
   const headlessResult = await controller.guard(rm, headless.ctx);
   expect(headlessResult?.block).toBe(true);
 
   const allowing = createContext(registry, "Allow once");
   expect(await controller.guard(rm, allowing.ctx)).toBeUndefined();
-  expect(allowing.prompts[0]).toContain("no classifier available");
+  expect(allowing.prompts[0]).toContain(
+    "Approval required\nNo configured classifier is available",
+  );
 
   const refusing = createContext(registry, "Block");
   const refusedResult = await controller.guard(rm, refusing.ctx);
@@ -248,7 +252,7 @@ test("/guard shows status, and on and off set it", async () => {
   await controller.load(ctx, noConfig);
   expect(controller.isEnabled()).toBe(true);
   runGuardCommand("", ctx, controller);
-  expect(notes.at(-1)).toBe("Guard is on, using openai/gpt-6-luna");
+  expect(notes.at(-1)).toBe("Guard is on with classifier openai/gpt-6-luna");
   runGuardCommand("off", ctx, controller);
   expect(controller.isEnabled()).toBe(false);
   runGuardCommand("", ctx, controller);
@@ -256,7 +260,7 @@ test("/guard shows status, and on and off set it", async () => {
   runGuardCommand("on", ctx, controller);
   expect(controller.isEnabled()).toBe(true);
   runGuardCommand("maybe", ctx, controller);
-  expect(notes.at(-1)).toBe("Usage: /guard [on|off]");
+  expect(notes.at(-1)).toBe("Use /guard, /guard on, or /guard off");
 });
 
 test("guardExtension registers its command and listeners", () => {
@@ -313,6 +317,39 @@ test("metadata distinguishes bypass, classifier, and user decisions", async () =
     source: "user",
     verdict: "block",
   });
+});
+
+test("missing classifiers have distinct metadata and natural status messages", async () => {
+  const { ctx, notes, prompts } = createContext(
+    fakeRegistry([], () => bool(1)),
+    "Allow once",
+  );
+  const controller = createGuardController(memoryChoice());
+  await controller.load(ctx, noConfig);
+  expect(controller.status()).toBe(
+    "Guard is off because no configured classifier is available",
+  );
+  expect(notes.at(-1)).toBe(
+    "No configured classifier is available\nTried openai/gpt-6-luna, typesafe/jev-latest",
+  );
+  controller.setEnabled(ctx, true);
+  expect(controller.status()).toBe(
+    "Guard is on, but approval is required because no classifier is available",
+  );
+  const metadata: GuardMetadata[] = [];
+  const record = (value: GuardMetadata): void => {
+    metadata.push(value);
+  };
+  await controller.guard(rm, ctx, record);
+  expect(metadata.at(-1)).toMatchObject({
+    decision: "allow",
+    source: "user",
+    verdict: "unavailable",
+  });
+  expect(metadata.at(-1)).not.toHaveProperty("durationMs");
+  expect(prompts[0]).toBe(
+    `Approval required\nNo configured classifier is available\nTried openai/gpt-6-luna, typesafe/jev-latest\n\n  ${rm.command}`,
+  );
 });
 
 test("metadata records classifier success, exceptions, and cancellation", async () => {

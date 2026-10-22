@@ -18,6 +18,9 @@ Conventions for every extension in `src/`.
 - An extension that needs usage notes, such as setup or config, keeps them in
   `src/<extension>/README.md`.
 - Implementation notes stay in module comments.
+- TUI text uses brief, natural wording without colons and describes actions or
+  states rather than giving extensions human agency. Preserve model IDs and
+  external error messages as written.
 
 ## Config
 

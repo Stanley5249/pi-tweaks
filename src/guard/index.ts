@@ -53,7 +53,7 @@ export type GuardContext = Readonly<{
   modelRegistry: ClassifierRegistry;
   sessionManager: Readonly<{ getBranch: () => readonly TranscriptEntry[] }>;
   signal?: AbortSignal | undefined;
-  ui: Readonly<Pick<ExtensionUIContext, "notify" | "select" | "setStatus">>;
+  ui: Readonly<Pick<ExtensionUIContext, "notify" | "select">>;
 }>;
 
 type PromptOptions = Readonly<{
@@ -96,10 +96,10 @@ export async function askUser(
   if (!ctx.hasUI) {
     return { block: true, reason };
   }
-  const choice = await ctx.ui.select(`${reason}\n\n  ${call.command}`, [
-    allowOnce,
-    "Block",
-  ]);
+  const choice = await ctx.ui.select(
+    `Approval required\n${reason}\n\n  ${call.command}`,
+    [allowOnce, "Block"],
+  );
   if (choice === allowOnce) {
     return undefined;
   }
@@ -123,12 +123,12 @@ const emptySession: Session = {
 
 function warn(ctx: GuardContext, messages: readonly string[]): void {
   for (const message of messages) {
-    ctx.ui.notify(`Guard: ${message}`, "warning");
+    ctx.ui.notify(message, "warning");
   }
 }
 
 function noClassifier(config: GuardConfig): string {
-  return `no classifier available from ${config.models.join(", ")}`;
+  return `No configured classifier is available\nTried ${config.models.join(", ")}`;
 }
 
 async function classify(
@@ -139,7 +139,7 @@ async function classify(
   const { config } = session;
   const model = session.classifier;
   if (model === undefined) {
-    return { kind: "error", reason: noClassifier(config) };
+    return { kind: "unavailable", reason: noClassifier(config) };
   }
   try {
     const verdict = await classifyCommand(ctx.modelRegistry, model, {
@@ -176,12 +176,12 @@ function statusText(enabled: boolean, session: Session): string {
   const model = session.classifier;
   if (!enabled) {
     return model === undefined
-      ? `Guard is off: ${noClassifier(session.config)}`
+      ? "Guard is off because no configured classifier is available"
       : "Guard is off";
   }
   return model === undefined
-    ? `Guard is on, but ${noClassifier(session.config)}`
-    : `Guard is on, using ${model.provider}/${model.id}`;
+    ? "Guard is on, but approval is required because no classifier is available"
+    : `Guard is on with classifier ${model.provider}/${model.id}`;
 }
 
 // oxlint-disable-next-line max-lines-per-function -- Controller closures share session state and keep its ownership local.
@@ -200,7 +200,6 @@ export function createGuardController(
     const explicit = choice.get() ?? config.enabled;
     enabled = explicit ?? classifier !== undefined;
     blocks.reset();
-    ctx.ui.setStatus("guard", enabled ? "guard" : undefined);
     const missing = classifier === undefined && explicit !== false;
     warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
   }
@@ -208,7 +207,6 @@ export function createGuardController(
   function setEnabled(ctx: GuardContext, value: boolean): void {
     enabled = value;
     choice.set(value);
-    ctx.ui.setStatus("guard", enabled ? "guard" : undefined);
     ctx.ui.notify(statusText(enabled, session), "info");
   }
 
@@ -282,7 +280,7 @@ export function runGuardCommand(
       break;
     }
     default: {
-      ctx.ui.notify("Usage: /guard [on|off]", "error");
+      ctx.ui.notify("Use /guard, /guard on, or /guard off", "error");
       break;
     }
   }

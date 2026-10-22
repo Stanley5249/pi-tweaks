@@ -11,6 +11,7 @@ const VerdictSchema = Type.Union([
   Type.Literal("block"),
   Type.Literal("error"),
   Type.Literal("aborted"),
+  Type.Literal("unavailable"),
 ]);
 
 const Metadata = Type.Object({
@@ -43,17 +44,38 @@ const decimals = 2;
 function summary(metadata: GuardMetadata): string {
   const { decision, source, verdict } = metadata;
   if (source === "off") {
-    return "Guard: off";
+    return "Allowed without checks";
+  }
+  if (source === "allowlist") {
+    return "Allowed by read-only rule";
+  }
+  const decisionText = decision === "allow" ? "Allowed" : "Blocked";
+  if (verdict === "aborted") {
+    return "Blocked because the classifier request was cancelled";
+  }
+  if (verdict === "error") {
+    return source === "user"
+      ? `${decisionText} by you after classifier failure`
+      : "Blocked because the classifier failed";
+  }
+  if (verdict === "unavailable") {
+    return source === "user"
+      ? `${decisionText} by you because no classifier was available`
+      : "Blocked because no classifier was available";
+  }
+  return source === "user"
+    ? `${decisionText} by you`
+    : `${decisionText} by classifier`;
+}
+
+function durationLabel(verdict: GuardMetadata["verdict"]): string {
+  if (verdict === "error") {
+    return "Request failed after";
   }
   if (verdict === "aborted") {
-    return "Guard: blocked after classification aborted";
+    return "Request cancelled after";
   }
-  if (verdict === "error" && source === "classifier") {
-    return "Guard: blocked after classifier error";
-  }
-  const decisionText = decision === "allow" ? "allowed" : "blocked";
-  const sourceText = source === "allowlist" ? "read-only rule" : source;
-  return `Guard: ${decisionText} by ${sourceText}${verdict === "error" ? " after classifier error" : ""}`;
+  return "Completed in";
 }
 
 export function guardLabel(metadata: GuardMetadata, expanded: boolean): string {
@@ -61,21 +83,18 @@ export function guardLabel(metadata: GuardMetadata, expanded: boolean): string {
   const lines = [summary(metadata)];
   if (expanded) {
     if (metadata.model !== undefined) {
-      lines.push(`  Model: ${metadata.model}`);
+      lines.push(`  Model ${metadata.model}`);
     }
-    if (verdict !== undefined) {
-      lines.push(`  Classifier: ${verdict}`);
+    if (metadata.durationMs !== undefined) {
+      lines.push(`  ${durationLabel(verdict)} ${metadata.durationMs} ms`);
     }
     if (metadata.probability !== undefined) {
       lines.push(
-        `  Allow probability: ${(metadata.probability * percent).toFixed(decimals)}%`,
+        `  Estimated allow probability was ${(metadata.probability * percent).toFixed(decimals)}%`,
       );
     }
-    if (metadata.durationMs !== undefined) {
-      lines.push(`  Classification time: ${metadata.durationMs} ms`);
-    }
     if (metadata.reason !== undefined) {
-      lines.push(`  Reason: ${metadata.reason}`);
+      lines.push(`  ${metadata.reason}`);
     }
   }
   return lines.map((line) => sanitizeSingleLine(line)).join("\n");

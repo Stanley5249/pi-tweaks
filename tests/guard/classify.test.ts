@@ -40,22 +40,73 @@ const metadata: GuardMetadata = {
   verdict: "allow",
 };
 
-test("Guard labels separate final decisions from classifier verdicts", () => {
-  expect(guardLabel(metadata, false)).toBe("Guard: allowed by classifier");
-  expect(guardLabel(metadata, true)).toContain("Allow probability: 95.00%");
-  expect(guardLabel(metadata, true)).toContain("Classification time: 420 ms");
+test("Guard summary labels cover every decision source and verdict", () => {
+  const cases: [GuardMetadata, string][] = [
+    [{ decision: "allow", source: "off" }, "Allowed without checks"],
+    [{ decision: "allow", source: "allowlist" }, "Allowed by read-only rule"],
+    [
+      { decision: "allow", source: "classifier", verdict: "allow" },
+      "Allowed by classifier",
+    ],
+    [
+      { decision: "block", source: "classifier", verdict: "block" },
+      "Blocked by classifier",
+    ],
+    [{ decision: "allow", source: "user", verdict: "allow" }, "Allowed by you"],
+    [{ decision: "block", source: "user", verdict: "block" }, "Blocked by you"],
+    [
+      { decision: "allow", source: "user", verdict: "error" },
+      "Allowed by you after classifier failure",
+    ],
+    [
+      { decision: "block", source: "user", verdict: "error" },
+      "Blocked by you after classifier failure",
+    ],
+    [
+      { decision: "block", source: "classifier", verdict: "error" },
+      "Blocked because the classifier failed",
+    ],
+    [
+      { decision: "allow", source: "user", verdict: "unavailable" },
+      "Allowed by you because no classifier was available",
+    ],
+    [
+      { decision: "block", source: "user", verdict: "unavailable" },
+      "Blocked by you because no classifier was available",
+    ],
+    [
+      { decision: "block", source: "classifier", verdict: "unavailable" },
+      "Blocked because no classifier was available",
+    ],
+    [
+      { decision: "block", source: "classifier", verdict: "aborted" },
+      "Blocked because the classifier request was cancelled",
+    ],
+  ];
+  for (const [value, expected] of cases) {
+    expect(guardLabel(value, false)).toBe(expected);
+  }
+});
+
+test("expanded labels use colon-free prose and preserve model IDs", () => {
+  const label = guardLabel(metadata, true);
+  expect(label).toContain("Model opencode/jev-1.13-free");
+  expect(label).toContain("Completed in 420 ms");
+  expect(label).toContain("Estimated allow probability was 95.00%");
+  expect(label).not.toContain("Classifier");
+  expect(label.split("\n").every((line) => !line.includes(":"))).toBe(true);
   expect(
-    guardLabel({ ...metadata, source: "user", verdict: "block" }, true),
-  ).toContain("Classifier: block");
-  expect(
-    guardLabel({ ...metadata, source: "user", verdict: "error" }, false),
-  ).toBe("Guard: allowed by user after classifier error");
-  expect(guardLabel({ decision: "allow", source: "off" }, false)).toBe(
-    "Guard: off",
+    guardLabel({ ...metadata, model: "vendor:model:free" }, true),
+  ).toContain("Model vendor:model:free");
+  expect(guardLabel({ ...metadata, verdict: "error" }, true)).toContain(
+    "Request failed after 420 ms",
+  );
+  expect(guardLabel({ ...metadata, verdict: "aborted" }, true)).toContain(
+    "Request cancelled after 420 ms",
   );
   expect(
     guardLabel({ ...metadata, model: "evil\u001B[31m\ntext" }, true),
-  ).toContain("Model: evil text");
+  ).toContain("Model evil text");
 });
 
 function renderContext(): RenderContext {
@@ -107,10 +158,8 @@ test("renderer preserves delegate reuse and displays persisted metadata only on 
     plainTheme,
     context,
   );
-  expect(compact?.render(80).join("\n")).toContain(
-    "Guard: allowed by classifier",
-  );
-  expect(compact?.render(80).join("\n")).not.toContain("Model:");
+  expect(compact?.render(80).join("\n")).toContain("Allowed by classifier");
+  expect(compact?.render(80).join("\n")).not.toContain("Model ");
   const expanded = renderer?.renderResult?.(
     result,
     { expanded: true, isPartial: false },
@@ -118,7 +167,7 @@ test("renderer preserves delegate reuse and displays persisted metadata only on 
     { ...context, lastComponent: compact },
   );
   expect(expanded?.render(80).join("\n")).toContain(
-    "Model: opencode/jev-1.13-free",
+    "Model opencode/jev-1.13-free",
   );
   expect(received).toEqual([undefined, delegate]);
   const partial = renderer?.renderResult?.(
@@ -146,9 +195,7 @@ test("live blocked results use their pending decision before persisted details a
     plainTheme,
     renderContext(),
   );
-  expect(result?.render(80).join("\n")).toContain(
-    "Guard: blocked by classifier",
-  );
+  expect(result?.render(80).join("\n")).toContain("Blocked by classifier");
 });
 
 test("renderer leaves historical and malformed metadata results unchanged", () => {
