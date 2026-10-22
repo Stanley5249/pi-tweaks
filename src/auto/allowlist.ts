@@ -2,7 +2,7 @@ export type Shell = "bash" | "powershell";
 
 // Operators, substitution, and quotes. A quoted word can hide an option from
 // the checks below, so any quote sends the command to the classifier.
-const unsafeCharacters = /[|;&<>$`(){}'"\n\r‘-‟]/u;
+const unsafeCharacters = /[|;&<>$`(){}'"\n\r\u2018-\u201F]/u;
 
 // A UNC path authenticates to a remote host, and Windows accepts either
 // separator in it, as in `\\host`, `//host`, or `/\host`. Bash also unescapes

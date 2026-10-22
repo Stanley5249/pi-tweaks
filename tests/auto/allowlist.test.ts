@@ -22,8 +22,7 @@ test("chaining, redirection, and substitution go to the classifier", () => {
 test("quotes, escapes, and UNC paths go to the classifier", () => {
   expect(isReadOnly("bash", 'cat "--help"')).toBe(false);
   expect(isReadOnly("bash", String.raw`cat \-x`)).toBe(false);
-  const curly = String.fromCodePoint(8220);
-  expect(isReadOnly("powershell", `cat ${curly}-Wait${curly}`)).toBe(false);
+  expect(isReadOnly("powershell", "cat \u201C-Wait\u201D")).toBe(false);
   expect(isReadOnly("bash", "cat //evil/share/x")).toBe(false);
   expect(isReadOnly("powershell", String.raw`Get-Content \\evil\share`)).toBe(
     false,
