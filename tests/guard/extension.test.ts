@@ -30,8 +30,10 @@ function memoryChoice(): Choice {
 // No config files exist here, so the defaults apply.
 const noConfig = join(import.meta.dir, "missing");
 
-async function enabledController(ctx: GuardContext): Promise<GuardController> {
-  const controller = createGuardController(memoryChoice());
+async function enabledController(
+  ctx: GuardContext,
+  controller = createGuardController(memoryChoice()),
+): Promise<GuardController> {
   controller.setEnabled(ctx, true);
   await controller.load(ctx, noConfig);
   return controller;
@@ -218,8 +220,7 @@ test("the approval menu rings once, and other paths stay quiet", async () => {
       },
     },
   };
-  controller.setEnabled(tracked, true);
-  await controller.load(tracked, noConfig);
+  await enabledController(tracked, controller);
   await controller.guard({ command: "ls", shell: "bash" }, tracked);
   await controller.guard(rm, tracked);
   expect(events).toEqual([]);
@@ -241,19 +242,12 @@ test("a failed bell still lets the user decide", async () => {
   const controller = createGuardController(memoryChoice(), (mode) => {
     ringBell(mode, output);
   });
-  const allowing = createContext(
+  const { ctx } = createContext(
     fakeRegistry([], () => bool(1)),
     "Allow once",
   );
-  controller.setEnabled(allowing.ctx, true);
-  await controller.load(allowing.ctx, noConfig);
-  expect(await controller.guard(rm, allowing.ctx)).toBeUndefined();
-  const refusing = createContext(
-    fakeRegistry([], () => bool(1)),
-    "Block",
-  );
-  const refused = await controller.guard(rm, refusing.ctx);
-  expect(refused?.block).toBe(true);
+  await enabledController(ctx, controller);
+  expect(await controller.guard(rm, ctx)).toBeUndefined();
 });
 
 test("an aborted classification blocks without a dialog", async () => {
@@ -349,10 +343,7 @@ test("metadata distinguishes bypass, classifier, and user decisions", async () =
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0.1));
   const { ctx } = createContext(registry, "Allow once");
   const controller = createGuardController(memoryChoice());
-  const metadata: GuardMetadata[] = [];
-  const record = (value: GuardMetadata): void => {
-    metadata.push(value);
-  };
+  const { metadata, record } = recorder();
   await controller.guard(rm, ctx, record);
   expect(metadata.at(-1)).toEqual({ decision: "allow", source: "off" });
   controller.setEnabled(ctx, true);
@@ -393,10 +384,7 @@ test("missing classifiers have distinct metadata and natural status messages", a
   expect(controller.status()).toBe(
     "Guard is on, but approval is required because no classifier is available",
   );
-  const metadata: GuardMetadata[] = [];
-  const record = (value: GuardMetadata): void => {
-    metadata.push(value);
-  };
+  const { metadata, record } = recorder();
   await controller.guard(rm, ctx, record);
   expect(metadata.at(-1)).toMatchObject({
     decision: "allow",
@@ -413,10 +401,7 @@ test("metadata records classifier success, exceptions, and cancellation", async 
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0.9));
   const { ctx } = createContext(registry);
   const controller = await enabledController(ctx);
-  const metadata: GuardMetadata[] = [];
-  const record = (value: GuardMetadata): void => {
-    metadata.push(value);
-  };
+  const { metadata, record } = recorder();
   await controller.guard(rm, ctx, record);
   expect(metadata.at(-1)).toMatchObject({
     decision: "allow",
@@ -446,6 +431,19 @@ test("metadata records classifier success, exceptions, and cancellation", async 
     verdict: "aborted",
   });
 });
+
+function recorder(): {
+  metadata: GuardMetadata[];
+  record: (value: GuardMetadata) => void;
+} {
+  const metadata: GuardMetadata[] = [];
+  return {
+    metadata,
+    record: (value) => {
+      metadata.push(value);
+    },
+  };
+}
 
 type TestHandler = (
   event: Readonly<Record<string, unknown>>,

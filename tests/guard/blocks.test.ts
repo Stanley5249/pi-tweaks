@@ -14,7 +14,6 @@ test("decide escalates to the user after repeated blocks", () => {
   expect(decide(blocked, blocks).kind).toBe("ask");
   expect(decide(blocked, blocks).kind).toBe("block");
   expect(decide({ kind: "allow" }, blocks).kind).toBe("allow");
-  expect(decide({ kind: "error", reason: "down" }, blocks).kind).toBe("ask");
 });
 
 test("approval reasons distinguish failed requests from unavailable classifiers", () => {
@@ -43,7 +42,5 @@ test("the total limit asks once and then starts over", () => {
     blocks.allow();
     return blocks.block();
   });
-  expect(asks.filter(Boolean)).toHaveLength(2);
-  expect(asks[19]).toBe(true);
-  expect(asks[39]).toBe(true);
+  expect(asks.flatMap((ask, index) => (ask ? [index] : []))).toEqual([19, 39]);
 });

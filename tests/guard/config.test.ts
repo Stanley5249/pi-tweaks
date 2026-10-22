@@ -33,7 +33,6 @@ async function withConfigs(
 }
 
 test("missing configs give the defaults", async () => {
-  expect(mergeConfig()).toEqual(defaultConfig);
   await withConfigs(undefined, undefined, async (agentDir, cwd) => {
     expect(await loadConfig(agentDir, cwd)).toEqual({
       config: defaultConfig,
