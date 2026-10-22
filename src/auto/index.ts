@@ -24,14 +24,22 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { isReadOnly } from "./allowlist";
 import type { Shell } from "./allowlist";
-import { classifyCommand, collectTranscript, findClassifier } from "./classify";
+import {
+  classifyCommand,
+  collectTranscript,
+  findClassifier,
+  formatContextFiles,
+} from "./classify";
 import type {
   Classifier,
   ClassifierRegistry,
+  ContextFile,
   TranscriptEntry,
   Verdict,
 } from "./classify";
 import { createBlockCounter, decide } from "./blocks";
+import { processChoice } from "./choice";
+import type { Choice } from "./choice";
 import type { Action } from "./blocks";
 import { defaultConfig, loadConfig } from "./config";
 import type { AutoConfig } from "./config";
@@ -43,6 +51,10 @@ export type AutoContext = Readonly<{
   sessionManager: Readonly<{ getBranch: () => readonly TranscriptEntry[] }>;
   signal?: AbortSignal | undefined;
   ui: Readonly<Pick<ExtensionUIContext, "notify" | "select" | "setStatus">>;
+}>;
+
+type PromptOptions = Readonly<{
+  contextFiles?: readonly ContextFile[] | undefined;
 }>;
 
 export type AutoAPI = Readonly<Pick<ExtensionAPI, "on" | "registerCommand">>;
@@ -62,6 +74,7 @@ export type AutoController = Readonly<{
   status: () => string;
   load: (ctx: AutoContext, agentDir: string) => Promise<void>;
   setEnabled: (ctx: AutoContext, enabled: boolean) => void;
+  setInstructions: (text: string) => void;
 }>;
 
 const allowOnce = "Allow once";
@@ -90,7 +103,20 @@ export async function askUser(
 type Session = Readonly<{
   config: AutoConfig;
   classifier: Classifier | undefined;
+  projectInstructions: string;
 }>;
+
+const emptySession: Session = {
+  classifier: undefined,
+  config: defaultConfig,
+  projectInstructions: "",
+};
+
+function warn(ctx: AutoContext, messages: readonly string[]): void {
+  for (const message of messages) {
+    ctx.ui.notify(`Auto mode: ${message}`, "warning");
+  }
+}
 
 function noClassifier(config: AutoConfig): string {
   return `no classifier available from ${config.models.join(", ")}`;
@@ -110,6 +136,7 @@ async function classify(
     ...call,
     config,
     cwd: ctx.cwd,
+    projectInstructions: session.projectInstructions,
     signal: ctx.signal,
     transcript: collectTranscript(ctx.sessionManager.getBranch()),
   });
@@ -142,46 +169,24 @@ function statusText(enabled: boolean, session: Session): string {
     : `Auto mode is on, using ${model.provider}/${model.id}`;
 }
 
-export type Choice = Readonly<{
-  get: () => boolean | undefined;
-  set: (value: boolean) => void;
-}>;
-
-// The `/auto` choice outlives the extension runtime.
-const choiceKey = Symbol.for("pi-tweaks.auto.enabled");
-
-const processChoice: Choice = {
-  get: () => {
-    const value: unknown = Reflect.get(globalThis, choiceKey);
-    return typeof value === "boolean" ? value : undefined;
-  },
-  set: (value) => {
-    Reflect.set(globalThis, choiceKey, value);
-  },
-};
-
 export function createAutoController(
   choice: Choice = processChoice,
 ): AutoController {
-  let session: Session = { classifier: undefined, config: defaultConfig };
+  let session = emptySession;
   let enabled = false;
   const blocks = createBlockCounter();
 
   async function load(ctx: AutoContext, agentDir: string): Promise<void> {
     const { config, problems } = await loadConfig(agentDir, ctx.cwd);
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
-    session = { classifier, config };
+    session = { ...session, classifier, config };
     // On by default, but only an explicit choice runs without a classifier.
     const explicit = choice.get() ?? config.enabled;
     enabled = explicit ?? classifier !== undefined;
     blocks.reset();
-    for (const problem of problems) {
-      ctx.ui.notify(`Auto mode: ${problem}`, "warning");
-    }
     ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
-    if (classifier === undefined && explicit !== false) {
-      ctx.ui.notify(statusText(enabled, session), "warning");
-    }
+    const missing = classifier === undefined && explicit !== false;
+    warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
   }
 
   function setEnabled(ctx: AutoContext, value: boolean): void {
@@ -207,6 +212,9 @@ export function createAutoController(
     isEnabled: () => enabled,
     load,
     setEnabled,
+    setInstructions: (text) => {
+      session = { ...session, projectInstructions: text };
+    },
     status: () => statusText(enabled, session),
   };
 }
@@ -253,6 +261,16 @@ export default function autoExtension(pi: AutoAPI): void {
   pi.on("session_start", async (_event: unknown, ctx: AutoContext) => {
     await controller.load(ctx, getAgentDir());
   });
+
+  // pi loads AGENTS.md and similar files per prompt, so capture them here.
+  pi.on(
+    "before_agent_start",
+    (event: Readonly<{ systemPromptOptions: PromptOptions }>) => {
+      controller.setInstructions(
+        formatContextFiles(event.systemPromptOptions.contextFiles ?? []),
+      );
+    },
+  );
 
   pi.on("tool_call", async (event: ToolCall, ctx: AutoContext) => {
     const call = shellCallOf(event);

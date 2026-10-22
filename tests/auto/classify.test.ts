@@ -1,0 +1,13 @@
+import { expect, test } from "bun:test";
+import { formatContextFiles } from "../../src/auto/classify";
+
+test("formatContextFiles labels each file and caps the length", () => {
+  expect(
+    formatContextFiles([
+      { content: "a", path: "AGENTS.md" },
+      { content: "b", path: "sub/AGENTS.md" },
+    ]),
+  ).toBe("# AGENTS.md\n\na\n\n# sub/AGENTS.md\n\nb");
+  const long = formatContextFiles([{ content: "x".repeat(20_000), path: "A" }]);
+  expect(long.length).toBe(8000);
+});
