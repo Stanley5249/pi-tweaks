@@ -5,7 +5,17 @@ import fastExtension, {
   rewriteFastModeRequest,
   runFastCommand,
 } from "../../src/fast/index";
-import type { FastAPI, FastContext } from "../../src/fast/index";
+import type { FastAPI, FastContext, FastState } from "../../src/fast/index";
+
+function memoryState(): FastState {
+  let value = false;
+  return {
+    get: () => value,
+    set: (next) => {
+      value = next;
+    },
+  };
+}
 
 type Notifications = { message: string; type: string | undefined }[];
 
@@ -58,7 +68,7 @@ test("provider support checks only OpenAI providers", () => {
 
 test("starts disabled and reports status without changing state", () => {
   const { ctx, state } = createTestContext("openai-codex");
-  const controller = createFastController();
+  const controller = createFastController(memoryState());
 
   expect(controller.isEnabled()).toBe(false);
 
@@ -71,7 +81,7 @@ test("starts disabled and reports status without changing state", () => {
 
 test("explicit enable and disable manage state", () => {
   const { ctx, state } = createTestContext("openai-codex");
-  const controller = createFastController();
+  const controller = createFastController(memoryState());
 
   controller.enable(ctx);
   expect(controller.isEnabled()).toBe(true);
@@ -91,7 +101,7 @@ test("explicit enable and disable manage state", () => {
 
 test("runFastCommand handles empty input as status, on, off, and rejects aliases", () => {
   const { ctx, state } = createTestContext("openai-codex");
-  const controller = createFastController();
+  const controller = createFastController(memoryState());
 
   runFastCommand("", ctx, controller);
   expect(controller.isEnabled()).toBe(false);
@@ -159,4 +169,11 @@ test("fastExtension registers command and event listeners", () => {
   expect(commands).toContain("fast");
   expect(events).toContain("session_start");
   expect(events).toContain("before_provider_request");
+});
+
+test("a new controller keeps the state of the previous runtime", () => {
+  const { ctx } = createTestContext("openai-codex");
+  const state = memoryState();
+  createFastController(state).enable(ctx);
+  expect(createFastController(state).isEnabled()).toBe(true);
 });

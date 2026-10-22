@@ -43,8 +43,26 @@ export function rewriteFastModeRequest(
   return { ...payload, service_tier: "priority" };
 }
 
-export function createFastController(): FastController {
-  let enabled = false;
+export type FastState = Readonly<{
+  get: () => boolean;
+  set: (value: boolean) => void;
+}>;
+
+// pi replaces the extension runtime on /new, /resume, /fork, and /reload, so
+// the choice lives on globalThis to last for the pi process.
+const stateKey = Symbol.for("pi-tweaks.fast.enabled");
+
+const processState: FastState = {
+  get: () => Reflect.get(globalThis, stateKey) === true,
+  set: (value) => {
+    Reflect.set(globalThis, stateKey, value);
+  },
+};
+
+export function createFastController(
+  store: FastState = processState,
+): FastController {
+  let enabled = store.get();
 
   function sync(ctx: FastContext): void {
     ctx.ui.setStatus("fast", enabled ? "fast" : undefined);
@@ -52,12 +70,14 @@ export function createFastController(): FastController {
 
   function enable(ctx: FastContext): void {
     enabled = true;
+    store.set(true);
     sync(ctx);
     ctx.ui.notify("OpenAI fast mode enabled (priority tier)", "info");
   }
 
   function disable(ctx: FastContext): void {
     enabled = false;
+    store.set(false);
     sync(ctx);
     ctx.ui.notify("OpenAI fast mode disabled", "info");
   }
