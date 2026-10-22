@@ -9,7 +9,7 @@
  *         |-- allow -> run, and reset the block streak
  *         |-- block -> the reason goes back to the model
  *         |     after too many blocks (blocks.ts) -> ask the user
- *         |-- error -> ask the user
+ *         |-- error or unavailable -> ask the user
  *         `-- aborted -> block
  * ```
  *
@@ -354,7 +354,8 @@ export default function guardExtension(pi: GuardAPI): void {
     if (message.role !== "toolResult") {
       return {};
     }
-    // Keep skipped-hook decisions for the live renderer, whose result predates this message.
+    // Keep skipped-hook decisions for the live renderer, whose result
+    // predates this message. The map lives for one session.
     const metadata = pending.get(message.toolCallId);
     return metadata === undefined
       ? undefined

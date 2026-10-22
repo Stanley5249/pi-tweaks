@@ -106,7 +106,7 @@ class GuardResultComponent extends Container {
 }
 
 export function createGuardRenderer(
-  lookup?: (toolCallId: string) => GuardMetadata | undefined,
+  lookup: (toolCallId: string) => GuardMetadata | undefined,
 ): ToolRendererResolver {
   return (name, resolve) => {
     const original = resolve();
@@ -133,7 +133,7 @@ export function createGuardRenderer(
         component.addChild(component.original);
         const details: unknown = result.details;
         const metadata =
-          recordOf(details)["guard"] ?? lookup?.(context.toolCallId);
+          recordOf(details)["guard"] ?? lookup(context.toolCallId);
         if (!options.isPartial && Value.Check(Metadata, metadata)) {
           const label = guardLabel(metadata, options.expanded);
           component.addChild(new Text(`\n${theme.fg("muted", label)}`, 0, 0));
@@ -143,5 +143,3 @@ export function createGuardRenderer(
     };
   };
 }
-
-export const guardRenderer: ToolRendererResolver = createGuardRenderer();
