@@ -13,4 +13,5 @@
 
 ## Rules
 
-- README.md should list only the extensions and their descriptions.
+- README.md should list only the extensions and their descriptions. An extension
+  name may link to that extension's own README.

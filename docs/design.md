@@ -14,6 +14,13 @@ its module comments.
 - Rejected: `just-bash` for `guard`, because it covers Bash only and the
   allowlist needs no parser.
 
+## Docs
+
+- An extension that needs usage notes, such as setup or config, keeps them in
+  `src/<extension>/README.md`. The root README links its name there.
+- Implementation notes stay in module comments, and config fields stay in the
+  schema descriptions.
+
 ## Config
 
 - Global file: `<agent-dir>/<extension>.json`, from `getAgentDir()`, where
