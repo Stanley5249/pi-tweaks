@@ -34,6 +34,8 @@ test("other programs and git subcommands go to the classifier", () => {
   expect(isReadOnly("bash", "git status")).toBe(false);
   expect(isReadOnly("powershell", String.raw`gc -Path:\\evil\s`)).toBe(false);
   expect(isReadOnly("powershell", "cat FileSystem:://evil/s")).toBe(false);
+  expect(isReadOnly("powershell", String.raw`cat /\evil\s`)).toBe(false);
+  expect(isReadOnly("powershell", String.raw`gc \/evil/s`)).toBe(false);
   expect(isReadOnly("bash", "git push")).toBe(false);
   expect(isReadOnly("bash", "rg --pre=sh x")).toBe(false);
   expect(isReadOnly("bash", "tree -o out")).toBe(false);

@@ -106,13 +106,15 @@ async function classify(
   if (model === undefined) {
     return { kind: "error", reason: noClassifier(config) };
   }
-  return classifyCommand(ctx.modelRegistry, model, {
+  const verdict = await classifyCommand(ctx.modelRegistry, model, {
     ...call,
     config,
     cwd: ctx.cwd,
     signal: ctx.signal,
     transcript: collectTranscript(ctx.sessionManager.getBranch()),
   });
+  // A classifier can finish just after the user aborts.
+  return ctx.signal?.aborted === true ? { kind: "aborted" } : verdict;
 }
 
 async function respond(

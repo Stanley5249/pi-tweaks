@@ -4,11 +4,12 @@ export type Shell = "bash" | "powershell";
 // the checks below, so any quote sends the command to the classifier.
 const unsafeCharacters = /[|;&<>$`(){}'"\n\r‘-‟]/u;
 
-// A UNC path such as `\\host\share` or `//host/share` authenticates to a
-// remote host. Bash also unescapes single backslashes, but PowerShell paths
-// use them, so PowerShell only rejects doubled ones.
+// A UNC path authenticates to a remote host, and Windows accepts either
+// separator in it, as in `\\host`, `//host`, or `/\host`. Bash also unescapes
+// single backslashes, but PowerShell paths use them, so PowerShell only
+// rejects two separators in a row.
 const unsafeBash = /\\|\/\//u;
-const unsafePowerShell = /\\\\|\/\//u;
+const unsafePowerShell = /[\\/]{2}/u;
 
 // Programs with no option that writes, runs, or reaches the network. Adding
 // one means checking all of its options, so the list stays short. `git` is

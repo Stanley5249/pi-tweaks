@@ -44,10 +44,11 @@ that tighten it.
 ## Commands
 
 A command that switches an extension, such as `/auto` or `/fast`, shows the
-status when called without arguments, and `on` or `off` sets the state. pi
-replaces the extension runtime on `/new`, `/resume`, `/fork`, and `/reload`, so
-state that must outlive a session lives on `globalThis` under a `Symbol.for`
-key.
+status when called without arguments, and `on` or `off` sets the state.
+
+pi replaces the extension runtime on `/new`, `/resume`, `/fork`, and `/reload`,
+which resets closure state. State that must outlive a session, such as the
+`/auto` choice, lives on `globalThis` under a `Symbol.for` key.
 
 ## Testing
 
