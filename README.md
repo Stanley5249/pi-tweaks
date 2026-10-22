@@ -1,5 +1,7 @@
 # pi-tweaks
 
+- **Bell**: Rings the terminal bell when pi finishes work or Guard asks for
+  approval.
 - **Catppuccin** (`/catppuccin`): Bundled Catppuccin themes for every flavor and
   a command to switch between them.
 - **Context** (`/context`): Preview the system prompt the model receives in a

@@ -23,6 +23,7 @@
       "./src/catppuccin/index.ts",
       "./src/context/index.ts",
       "./src/fast/index.ts",
+      "./src/bell/index.ts",
       "./src/guard/index.ts",
       "./src/statusline/index.ts"
     ],
