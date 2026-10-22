@@ -38,3 +38,7 @@ ci: fmt-check check test
 # Bundle installed npm Pi extensions to speed up startup.
 bundle *args:
     bun run scripts/bundle.ts {{ args }}
+
+# Patch the installed Pi until upstream fixes land.
+patch *args:
+    bun run scripts/patch.ts {{ args }}
