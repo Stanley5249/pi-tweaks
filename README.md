@@ -7,7 +7,7 @@
 - **Fast mode** (`/fast`): Manage OpenAI priority service tier for interactive
   requests.
 - **[Guard](src/guard/README.md)** (`/guard`): Claude Code style command guard
-  that asks a classifier model, such as GPT-6 Luna, before risky `bash` and
-  `powershell` commands run.
+  that asks a classifier model before risky `bash` and `powershell` commands
+  run.
 - **Statusline** (`/statusline`): Theme-aware footer with session usage, cache
   hit rate, context usage, and model information.

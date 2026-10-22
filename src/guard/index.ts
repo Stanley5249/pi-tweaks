@@ -12,9 +12,8 @@
  *         `-- aborted -> block
  * ```
  *
- * Without a UI, asking the user blocks. The guard starts on when a classifier
- * is available, unless the config or `/guard` says otherwise. config.ts
- * describes the config files.
+ * Without a UI, asking the user blocks. config.ts describes the config
+ * files, including when the guard starts on.
  */
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {

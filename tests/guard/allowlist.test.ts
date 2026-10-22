@@ -6,7 +6,7 @@ test("plain read-only commands skip the classifier", () => {
   expect(isReadOnly("bash", "head -n 20 src/guard/index.ts")).toBe(true);
   expect(isReadOnly("powershell", "Get-ChildItem -Recurse src")).toBe(true);
   expect(
-    isReadOnly("powershell", String.raw`get-content src\auto\index.ts`),
+    isReadOnly("powershell", String.raw`get-content src\guard\index.ts`),
   ).toBe(true);
 });
 
