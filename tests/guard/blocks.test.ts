@@ -7,13 +7,13 @@ import {
 
 test("decide escalates to the user after repeated blocks", () => {
   const blocks = createBlockCounter();
-  const blocked = { kind: "block", reason: "no" } as const;
+  const blocked = { kind: "block", probability: 0, reason: "no" } as const;
   for (let i = 1; i < maxConsecutiveBlocks; i += 1) {
     expect(decide(blocked, blocks).kind).toBe("block");
   }
   expect(decide(blocked, blocks).kind).toBe("ask");
   expect(decide(blocked, blocks).kind).toBe("block");
-  expect(decide({ kind: "allow" }, blocks).kind).toBe("allow");
+  expect(decide({ kind: "allow", probability: 1 }, blocks).kind).toBe("allow");
 });
 
 test("approval reasons distinguish failed requests from unavailable classifiers", () => {

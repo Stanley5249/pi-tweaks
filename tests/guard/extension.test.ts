@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import type { GuardMetadata } from "../../src/guard/render";
 import { join } from "node:path";
-import type { ClassifierRegistry } from "../../src/guard/classify";
+import type { Classifier, ClassifierRegistry } from "../../src/guard/classify";
 import { collectTranscript, findClassifier } from "../../src/guard/classify";
 import guardExtension, {
   createGuardController,
@@ -39,9 +39,6 @@ async function enabledController(
   return controller;
 }
 
-type Classifier = Awaited<
-  ReturnType<ClassifierRegistry["getAvailableOfType"]>
->[number];
 type Result = Awaited<ReturnType<ClassifierRegistry["classify"]>>;
 
 function fakeRegistry(
@@ -256,10 +253,7 @@ test("an aborted classification blocks without a dialog", async () => {
     stopReason: "aborted",
   }));
   const { ctx, prompts } = createContext(registry, "Allow once");
-  const controller = await enabledController({
-    ...ctx,
-    signal: AbortSignal.abort(),
-  });
+  const controller = await enabledController(ctx);
   const result = await controller.guard(rm, {
     ...ctx,
     signal: AbortSignal.abort(),

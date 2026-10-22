@@ -198,25 +198,28 @@ export function createGuardController(
   bell: Bell = ringBell,
 ): GuardController {
   let session = emptySession;
-  let enabled = false;
   const blocks = createBlockCounter();
 
   async function load(ctx: GuardContext, agentDir: string): Promise<void> {
     const { config, problems } = await loadConfig(agentDir, ctx.cwd);
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
     session = { ...session, classifier, config };
-    // On by default, but only an explicit choice runs without a classifier.
-    const explicit = choice.get() ?? config.enabled;
-    enabled = explicit ?? classifier !== undefined;
     blocks.reset();
+    const explicit = choice.get() ?? config.enabled;
     const missing = classifier === undefined && explicit !== false;
     warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
   }
 
+  // On by default, but only an explicit choice runs without a classifier.
+  function isEnabled(): boolean {
+    return (
+      choice.get() ?? session.config.enabled ?? session.classifier !== undefined
+    );
+  }
+
   function setEnabled(ctx: GuardContext, value: boolean): void {
-    enabled = value;
     choice.set(value);
-    ctx.ui.notify(statusText(enabled, session), "info");
+    ctx.ui.notify(statusText(value, session), "info");
   }
 
   async function guard(
@@ -224,6 +227,7 @@ export function createGuardController(
     ctx: GuardContext,
     record?: (metadata: GuardMetadata) => void,
   ): Promise<GuardResult> {
+    const enabled = isEnabled();
     if (!enabled || isReadOnly(call.shell, call.command)) {
       record?.({ decision: "allow", source: enabled ? "allowlist" : "off" });
       return undefined;
@@ -249,13 +253,13 @@ export function createGuardController(
 
   return {
     guard,
-    isEnabled: () => enabled,
+    isEnabled,
     load,
     setEnabled,
     setInstructions: (text) => {
       session = { ...session, projectInstructions: text };
     },
-    status: () => statusText(enabled, session),
+    status: () => statusText(isEnabled(), session),
   };
 }
 

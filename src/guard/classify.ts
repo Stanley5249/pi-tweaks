@@ -3,9 +3,9 @@ import type { Shell } from "./allowlist";
 import type { GuardConfig } from "./config";
 
 export type Verdict =
-  | Readonly<{ kind: "allow"; probability?: number }>
+  | Readonly<{ kind: "allow"; probability: number }>
   | Readonly<{ kind: "aborted" }>
-  | Readonly<{ kind: "block"; reason: string; probability?: number }>
+  | Readonly<{ kind: "block"; reason: string; probability: number }>
   | Readonly<{ kind: "error" | "unavailable"; reason: string }>;
 
 // pi-ai owns these types; deriving them from pi's registry keeps one
