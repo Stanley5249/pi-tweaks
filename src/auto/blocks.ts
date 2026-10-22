@@ -49,6 +49,9 @@ export function decide(verdict: Verdict, blocks: BlockCounter): Action {
     blocks.allow();
     return verdict;
   }
+  if (verdict.kind === "aborted") {
+    return { kind: "block", reason: "Aborted by the user." };
+  }
   if (verdict.kind === "error") {
     return {
       kind: "ask",

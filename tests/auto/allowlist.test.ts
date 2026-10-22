@@ -3,7 +3,6 @@ import { isReadOnly } from "../../src/auto/allowlist";
 
 test("plain read-only commands skip the classifier", () => {
   expect(isReadOnly("bash", "ls -la src")).toBe(true);
-  expect(isReadOnly("bash", "git status")).toBe(true);
   expect(isReadOnly("bash", "head -n 20 src/auto/index.ts")).toBe(true);
   expect(isReadOnly("powershell", "Get-ChildItem -Recurse src")).toBe(true);
   expect(
@@ -32,7 +31,9 @@ test("quotes, escapes, and UNC paths go to the classifier", () => {
 });
 
 test("other programs and git subcommands go to the classifier", () => {
-  expect(isReadOnly("bash", "git status --short")).toBe(false);
+  expect(isReadOnly("bash", "git status")).toBe(false);
+  expect(isReadOnly("powershell", String.raw`gc -Path:\\evil\s`)).toBe(false);
+  expect(isReadOnly("powershell", "cat FileSystem:://evil/s")).toBe(false);
   expect(isReadOnly("bash", "git push")).toBe(false);
   expect(isReadOnly("bash", "rg --pre=sh x")).toBe(false);
   expect(isReadOnly("bash", "tree -o out")).toBe(false);

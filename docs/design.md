@@ -36,15 +36,18 @@ An extension that needs settings reads its own JSON file instead of pi's
   runtime state stays optional, and the code documents the rule.
 - Files are read on `session_start`, so `/reload` applies an edit.
 
-pi's `settings.json` merges project values over global ones and loads a bare
-`.pi` directory without project trust. A security setting therefore needs its
-own file, where the project schema only allows fields that tighten it.
+pi's `settings.json` merges project values over global ones. A separate project
+file is also read without project trust, because pi gates only its own `.pi`
+resources. The project schema of a security setting therefore allows only fields
+that tighten it.
 
 ## Commands
 
 A command that switches an extension, such as `/auto` or `/fast`, shows the
-status when called without arguments. `on` and `off` set the state for the rest
-of the pi process.
+status when called without arguments, and `on` or `off` sets the state. pi
+replaces the extension runtime on `/new`, `/resume`, `/fork`, and `/reload`, so
+state that must outlive a session lives on `globalThis` under a `Symbol.for`
+key.
 
 ## Testing
 

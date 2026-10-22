@@ -120,9 +120,6 @@ async function respond(
   call: ShellCall,
   ctx: AutoContext,
 ): Promise<GuardResult> {
-  if (ctx.signal?.aborted === true) {
-    return { block: true, reason: "Aborted by the user." };
-  }
   if (action.kind === "ask") {
     return askUser(ctx, call, action.reason);
   }
@@ -143,11 +140,30 @@ function statusText(enabled: boolean, session: Session): string {
     : `Auto mode is on, using ${model.provider}/${model.id}`;
 }
 
-export function createAutoController(): AutoController {
+export type Choice = Readonly<{
+  get: () => boolean | undefined;
+  set: (value: boolean) => void;
+}>;
+
+// pi replaces the extension runtime on /new, /resume, /fork, and /reload, so
+// the `/auto` choice lives on globalThis to last for the pi process.
+const choiceKey = Symbol.for("pi-tweaks.auto.enabled");
+
+const processChoice: Choice = {
+  get: () => {
+    const value: unknown = Reflect.get(globalThis, choiceKey);
+    return typeof value === "boolean" ? value : undefined;
+  },
+  set: (value) => {
+    Reflect.set(globalThis, choiceKey, value);
+  },
+};
+
+export function createAutoController(
+  choice: Choice = processChoice,
+): AutoController {
   let session: Session = { classifier: undefined, config: defaultConfig };
   let enabled = false;
-  // Set by `/auto`, so a new, resumed, or forked session keeps the choice.
-  const chosen: { enabled?: boolean } = {};
   const blocks = createBlockCounter();
 
   async function load(ctx: AutoContext, agentDir: string): Promise<void> {
@@ -155,20 +171,21 @@ export function createAutoController(): AutoController {
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
     session = { classifier, config };
     // On by default, but only an explicit choice runs without a classifier.
-    enabled = chosen.enabled ?? config.enabled ?? classifier !== undefined;
+    const explicit = choice.get() ?? config.enabled;
+    enabled = explicit ?? classifier !== undefined;
     blocks.reset();
     for (const problem of problems) {
       ctx.ui.notify(`Auto mode: ${problem}`, "warning");
     }
     ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
-    if (classifier === undefined) {
+    if (classifier === undefined && explicit !== false) {
       ctx.ui.notify(statusText(enabled, session), "warning");
     }
   }
 
   function setEnabled(ctx: AutoContext, value: boolean): void {
     enabled = value;
-    chosen.enabled = value;
+    choice.set(value);
     ctx.ui.setStatus("auto", enabled ? "auto" : undefined);
     ctx.ui.notify(statusText(enabled, session), "info");
   }

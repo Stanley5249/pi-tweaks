@@ -16,13 +16,24 @@ import type {
   AutoAPI,
   AutoContext,
   AutoController,
+  Choice,
 } from "../../src/auto/index";
+
+function memoryChoice(): Choice {
+  const state: { value?: boolean } = {};
+  return {
+    get: () => state.value,
+    set: (value) => {
+      state.value = value;
+    },
+  };
+}
 
 // No config files exist here, so the defaults apply.
 const noConfig = join(import.meta.dir, "missing");
 
 async function enabledController(ctx: AutoContext): Promise<AutoController> {
-  const controller = createAutoController();
+  const controller = createAutoController(memoryChoice());
   controller.setEnabled(ctx, true);
   await controller.load(ctx, noConfig);
   return controller;
@@ -158,7 +169,7 @@ test("the total limit asks once and then starts over", () => {
 test("guard passes through when disabled or read-only", async () => {
   const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0));
   const { ctx } = createContext(registry);
-  const controller = createAutoController();
+  const controller = createAutoController(memoryChoice());
   expect(await controller.guard(rm, ctx)).toBeUndefined();
   controller.setEnabled(ctx, true);
   expect(
@@ -216,15 +227,17 @@ test("an aborted classification blocks without a dialog", async () => {
   expect(prompts).toHaveLength(0);
 });
 
-test("/auto survives a new session", async () => {
+test("/auto survives a new extension runtime", async () => {
   const { ctx } = createContext(fakeRegistry([], () => bool(1)));
-  const controller = createAutoController();
-  await controller.load(ctx, noConfig);
+  const choice = memoryChoice();
+  const first = createAutoController(choice);
+  await first.load(ctx, noConfig);
   // On by default, but not without a classifier.
-  expect(controller.isEnabled()).toBe(false);
-  controller.setEnabled(ctx, true);
-  await controller.load(ctx, noConfig);
-  expect(controller.isEnabled()).toBe(true);
+  expect(first.isEnabled()).toBe(false);
+  first.setEnabled(ctx, true);
+  const second = createAutoController(choice);
+  await second.load(ctx, noConfig);
+  expect(second.isEnabled()).toBe(true);
 });
 
 test("shellCallOf picks bash and powershell commands only", () => {
@@ -244,7 +257,7 @@ test("/auto shows status, and on and off set it", async () => {
   const { ctx, notes } = createContext(
     fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
   );
-  const controller = createAutoController();
+  const controller = createAutoController(memoryChoice());
   await controller.load(ctx, noConfig);
   expect(controller.isEnabled()).toBe(true);
   runAutoCommand("", ctx, controller);
