@@ -15,6 +15,7 @@ import type {
   GuardController,
 } from "../../src/guard/index";
 import type { Choice } from "../../src/guard/choice";
+import { ringBell } from "../../src/terminal";
 
 function memoryChoice(): Choice {
   const state: { value?: boolean } = {};
@@ -91,6 +92,7 @@ function createContext(
   const ctx: GuardContext = {
     cwd: "/repo",
     hasUI: choice !== undefined,
+    mode: choice === undefined ? "print" : "tui",
     modelRegistry: registry,
     sessionManager: {
       getBranch: () => [
@@ -197,6 +199,61 @@ test("classifier errors ask the user, or block without a UI", async () => {
   const refusing = createContext(registry, "Block");
   const refusedResult = await controller.guard(rm, refusing.ctx);
   expect(refusedResult?.block).toBe(true);
+});
+
+test("the approval menu rings once, and other paths stay quiet", async () => {
+  const events: string[] = [];
+  const registry = fakeRegistry(["openai/gpt-6-luna"], () => bool(0.1));
+  const controller = createGuardController(memoryChoice(), (mode) => {
+    events.push(`bell ${mode}`);
+  });
+  const { ctx } = createContext(registry, "Allow once");
+  const tracked: GuardContext = {
+    ...ctx,
+    ui: {
+      ...ctx.ui,
+      select: async (title: string) => {
+        events.push("select");
+        return ctx.ui.select(title, []);
+      },
+    },
+  };
+  controller.setEnabled(tracked, true);
+  await controller.load(tracked, noConfig);
+  await controller.guard({ command: "ls", shell: "bash" }, tracked);
+  await controller.guard(rm, tracked);
+  expect(events).toEqual([]);
+  await controller.guard(rm, tracked);
+  await controller.guard(rm, tracked);
+  expect(events).toEqual(["bell tui", "select"]);
+  const headless = createContext(registry);
+  await controller.guard(rm, headless.ctx);
+  expect(events).toHaveLength(2);
+});
+
+test("a failed bell still lets the user decide", async () => {
+  const output = {
+    isTTY: true,
+    write: () => {
+      throw new Error("closed");
+    },
+  };
+  const controller = createGuardController(memoryChoice(), (mode) => {
+    ringBell(mode, output);
+  });
+  const allowing = createContext(
+    fakeRegistry([], () => bool(1)),
+    "Allow once",
+  );
+  controller.setEnabled(allowing.ctx, true);
+  await controller.load(allowing.ctx, noConfig);
+  expect(await controller.guard(rm, allowing.ctx)).toBeUndefined();
+  const refusing = createContext(
+    fakeRegistry([], () => bool(1)),
+    "Block",
+  );
+  const refused = await controller.guard(rm, refusing.ctx);
+  expect(refused?.block).toBe(true);
 });
 
 test("an aborted classification blocks without a dialog", async () => {

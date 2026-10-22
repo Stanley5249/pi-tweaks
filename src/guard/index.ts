@@ -19,6 +19,7 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
   ExtensionAPI,
+  ExtensionContext,
   ExtensionUIContext,
   MessageEndEvent,
   ToolCallEventResult,
@@ -46,10 +47,12 @@ import { defaultConfig, loadConfig } from "./config";
 import type { GuardConfig } from "./config";
 import { createGuardRenderer, recordOf } from "./render";
 import type { GuardMetadata } from "./render";
+import { ringBell } from "../terminal";
 
 export type GuardContext = Readonly<{
   cwd: string;
   hasUI: boolean;
+  mode: ExtensionContext["mode"];
   modelRegistry: ClassifierRegistry;
   sessionManager: Readonly<{ getBranch: () => readonly TranscriptEntry[] }>;
   signal?: AbortSignal | undefined;
@@ -86,16 +89,21 @@ export type GuardController = Readonly<{
   setInstructions: (text: string) => void;
 }>;
 
+export type Bell = (mode: GuardContext["mode"]) => void;
+
+type AskContext = GuardContext & Readonly<{ bell: Bell }>;
+
 const allowOnce = "Allow once";
 
 export async function askUser(
-  ctx: GuardContext,
+  ctx: AskContext,
   call: ShellCall,
   reason: string,
 ): Promise<GuardResult> {
   if (!ctx.hasUI) {
     return { block: true, reason };
   }
+  ctx.bell(ctx.mode);
   const choice = await ctx.ui.select(
     `Approval required\n${reason}\n\n  ${call.command}`,
     [allowOnce, "Block"],
@@ -162,7 +170,7 @@ async function classify(
 async function respond(
   action: Action,
   call: ShellCall,
-  ctx: GuardContext,
+  ctx: AskContext,
 ): Promise<GuardResult> {
   if (action.kind === "ask") {
     return askUser(ctx, call, action.reason);
@@ -187,6 +195,7 @@ function statusText(enabled: boolean, session: Session): string {
 // oxlint-disable-next-line max-lines-per-function -- Controller closures share session state and keep its ownership local.
 export function createGuardController(
   choice: Choice = processChoice,
+  bell: Bell = ringBell,
 ): GuardController {
   let session = emptySession;
   let enabled = false;
@@ -224,7 +233,7 @@ export function createGuardController(
     const verdict = await classify(call, ctx, session);
     const durationMs = Math.round(performance.now() - started);
     const action = decide(verdict, blocks);
-    const result = await respond(action, call, ctx);
+    const result = await respond(action, call, { ...ctx, bell });
     record?.({
       decision: result?.block === true ? "block" : "allow",
       source: action.kind === "ask" && ctx.hasUI ? "user" : "classifier",

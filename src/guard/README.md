@@ -41,6 +41,7 @@ and `/reload`. Run `/guard` to check the current state.
 - After 3 blocks in a row, pi asks you, and the streak starts over. After 20
   blocks in total, pi asks you, and the total starts over.
 - When the classifier fails, pi asks you.
+- Before pi asks you in the terminal UI, it rings the terminal bell.
 - Each shell result starts with `Allowed` or `Blocked` and identifies the
   decision source, such as `Allowed by classifier`, `Allowed by read-only rule`,
   or `Allowed by you`. When Guard is off, it shows `Allowed without checks`.
