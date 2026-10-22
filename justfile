@@ -42,3 +42,10 @@ bundle *args:
 # Patch the installed Pi until upstream fixes land.
 patch *args:
     bun run scripts/patch.ts {{ args }}
+
+# Upgrade Pi and its packages, then reapply patches and bundles.
+upgrade *bundles:
+    bun install -g @earendil-works/pi-coding-agent@latest
+    pi update --extensions
+    just patch
+    just bundle {{ bundles }}
