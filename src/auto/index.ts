@@ -5,10 +5,6 @@
  * `powershell` calls go to a classifier model with the user's messages and
  * recent tool calls. A block goes back to the model with the reason, and the
  * user decides after repeated blocks or when the classifier fails.
- *
- * Config, merged by `config.ts`:
- * - `<agent-dir>/auto-mode.json`: every field.
- * - `<project>/.pi/auto-mode.json`: only `environment` and `deny`.
  */
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {

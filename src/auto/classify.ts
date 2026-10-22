@@ -1,13 +1,14 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AutoConfig } from "./config";
 import type { Shell } from "./allowlist";
+import type { AutoConfig } from "./config";
 
 export type Verdict =
   | Readonly<{ kind: "allow" }>
   | Readonly<{ kind: "block"; reason: string }>
   | Readonly<{ kind: "error"; reason: string }>;
 
-// pi-ai owns these types but is not a direct dependency, so derive them.
+// pi-ai owns these types; deriving them from pi's registry keeps one
+// source of truth and satisfies the readonly-parameter lint.
 type Classify = ExtensionContext["modelRegistry"]["classify"];
 type Classifier = Parameters<Classify>[0];
 type ClassifierContext = Parameters<Classify>[1];

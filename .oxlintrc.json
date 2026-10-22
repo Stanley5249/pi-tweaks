@@ -34,6 +34,7 @@
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "no-magic-numbers": ["error", { "ignore": [-1, 0, 1] }],
     "no-ternary": "off",
+    "new-cap": ["error", { "capIsNewExceptionPattern": "^(Type|Value)\\." }],
     "import/group-exports": "off",
     "import/exports-last": "off",
     "require-await": "off",

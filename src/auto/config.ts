@@ -1,23 +1,50 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Type } from "typebox";
+import type { Static, TSchema } from "typebox";
+import { Value } from "typebox/value";
+
+const Rules = Type.Array(Type.String());
+const Models = Type.Array(Type.String({ pattern: "^[^/]+/.+$" }));
+
+// A repository can only add context and deny rules. Allow rules, models,
+// thresholds, and the switch stay global so a cloned repository cannot
+// loosen the guard.
+export const ProjectConfig = Type.Object(
+  {
+    deny: Type.Optional(Rules),
+    environment: Type.Optional(Rules),
+  },
+  { additionalProperties: false },
+);
+
+export const GlobalConfig = Type.Object(
+  {
+    allow: Type.Optional(Rules),
+    deny: Type.Optional(Rules),
+    enabled: Type.Optional(Type.Boolean()),
+    environment: Type.Optional(Rules),
+    models: Type.Optional(Models),
+    threshold: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
+  },
+  { additionalProperties: false },
+);
 
 export type AutoConfig = Readonly<{
+  allow: readonly string[];
+  deny: readonly string[];
   enabled: boolean;
+  environment: readonly string[];
   /** Classifier models as `provider/id`; the first available one is used. */
   models: readonly string[];
   /** Minimum allow probability; lower blocks the command. */
   threshold: number;
-  environment: readonly string[];
-  allow: readonly string[];
-  deny: readonly string[];
 }>;
 
 export type LoadedConfig = Readonly<{
   config: AutoConfig;
   problems: readonly string[];
 }>;
-
-type RawConfig = Readonly<Record<string, unknown>>;
 
 export const CONFIG_FILE = "auto-mode.json";
 
@@ -30,106 +57,50 @@ export const defaultConfig: AutoConfig = {
   threshold: 0.5,
 };
 
-function isRecord(value: unknown): value is RawConfig {
-  return typeof value === "object" && Boolean(value) && !Array.isArray(value);
-}
-
-function isStringList(value: unknown): value is readonly string[] {
-  return (
-    Array.isArray(value) && value.every((item) => typeof item === "string")
-  );
-}
-
-function isThreshold(value: unknown): value is number {
-  return typeof value === "number" && value >= 0 && value <= 1;
-}
-
-const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
-  allow: isStringList,
-  deny: isStringList,
-  enabled: (value) => typeof value === "boolean",
-  environment: isStringList,
-  models: isStringList,
-  threshold: isThreshold,
-};
-
-const globalKeys: readonly string[] = Object.keys(validators);
-
-// A repository can only add context and deny rules. Allow rules, models,
-// thresholds, and the switch stay global so a cloned repository cannot
-// loosen the guard.
-const projectKeys: readonly string[] = ["environment", "deny"];
-
-function problemsOf(
-  raw: RawConfig,
-  keys: readonly string[],
-  label: string,
-): string[] {
-  return Object.entries(raw).flatMap(
-    ([key, value]: readonly [string, unknown]) => {
-      if (!keys.includes(key)) {
-        return [`${label} config cannot set "${key}"`];
-      }
-      return validators[key]?.(value) === true
-        ? []
-        : [`${label} config has an invalid "${key}"`];
-    },
-  );
-}
-
-function listOf(raw: RawConfig, key: string): readonly string[] {
-  const value = raw[key];
-  return isStringList(value) ? value : [];
-}
-
-export function mergeConfig(
-  global: RawConfig,
-  project: RawConfig,
-): LoadedConfig {
-  const { enabled, models, threshold } = global;
-  const config: AutoConfig = {
-    allow: listOf(global, "allow"),
-    deny: [...listOf(global, "deny"), ...listOf(project, "deny")],
-    enabled: typeof enabled === "boolean" ? enabled : defaultConfig.enabled,
-    environment: [
-      ...listOf(global, "environment"),
-      ...listOf(project, "environment"),
-    ],
-    models: isStringList(models) ? models : defaultConfig.models,
-    threshold: isThreshold(threshold) ? threshold : defaultConfig.threshold,
-  };
-  const problems = [
-    ...problemsOf(global, globalKeys, "Global"),
-    ...problemsOf(project, projectKeys, "Project"),
-  ];
-  return { config, problems };
-}
+type Parsed<Data> = Readonly<{ value: Data; problems: readonly string[] }>;
 
 async function readText(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, "utf8");
   } catch (error) {
-    if (isRecord(error) && error["code"] === "ENOENT") {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return undefined;
     }
     throw error;
   }
 }
 
-/** Returns the parsed object, or a problem description. */
-export async function readConfigFile(
+/** Reads one config file; a missing file is empty, an invalid one is ignored. */
+export async function readConfig<Schema extends TSchema>(
   path: string,
-): Promise<RawConfig | string> {
+  schema: Schema,
+): Promise<Parsed<Static<Schema> | undefined>> {
   try {
     const text = await readText(path);
-    if (text === undefined) {
-      return {};
+    const value: unknown = text === undefined ? undefined : JSON.parse(text);
+    if (value === undefined || Value.Check(schema, value)) {
+      return { problems: [], value };
     }
-    const parsed: unknown = JSON.parse(text);
-    return isRecord(parsed) ? parsed : `${path}: expected a JSON object`;
+    const problems = Value.Errors(schema, value).map(
+      (error: Readonly<{ instancePath: string; message: string }>) =>
+        `${path}: ${error.instancePath || "/"} ${error.message}`,
+    );
+    return { problems, value: undefined };
   } catch (error) {
-    return `${path}: ${String(error)}`;
+    return { problems: [`${path}: ${String(error)}`], value: undefined };
   }
+}
+
+export function mergeConfig(
+  global: Partial<AutoConfig> = {},
+  project: Readonly<Partial<Pick<AutoConfig, "deny" | "environment">>> = {},
+): AutoConfig {
+  const config = { ...defaultConfig, ...global };
+  return {
+    ...config,
+    deny: [...config.deny, ...(project.deny ?? [])],
+    environment: [...config.environment, ...(project.environment ?? [])],
+  };
 }
 
 export async function loadConfig(
@@ -137,15 +108,11 @@ export async function loadConfig(
   cwd: string,
 ): Promise<LoadedConfig> {
   const [global, project] = await Promise.all([
-    readConfigFile(join(agentDir, CONFIG_FILE)),
-    readConfigFile(join(cwd, ".pi", CONFIG_FILE)),
+    readConfig(join(agentDir, CONFIG_FILE), GlobalConfig),
+    readConfig(join(cwd, ".pi", CONFIG_FILE), ProjectConfig),
   ]);
-  const merged = mergeConfig(
-    typeof global === "string" ? {} : global,
-    typeof project === "string" ? {} : project,
-  );
-  const unreadable = [global, project].filter(
-    (raw): raw is string => typeof raw === "string",
-  );
-  return { ...merged, problems: [...unreadable, ...merged.problems] };
+  return {
+    config: mergeConfig(global.value, project.value),
+    problems: [...global.problems, ...project.problems],
+  };
 }
