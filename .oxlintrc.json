@@ -72,7 +72,29 @@
     "eqeqeq": ["error", "always"],
     "import/no-cycle": "error",
     "import/no-commonjs": "error",
-    "unicorn/no-anonymous-default-export": "error"
+    "unicorn/no-anonymous-default-export": "error",
+    "typescript/prefer-readonly-parameter-types": [
+      "error",
+      {
+        "allow": [
+          {
+            "from": "package",
+            "package": "@types/node",
+            "name": ["AbortSignal"]
+          },
+          {
+            "from": "package",
+            "package": "bun-types",
+            "name": ["AbortSignal"]
+          },
+          {
+            "from": "package",
+            "package": "@earendil-works/pi-ai",
+            "name": ["ClassifierModel", "ClassifierContext"]
+          }
+        ]
+      }
+    ]
   },
   "overrides": [
     {
