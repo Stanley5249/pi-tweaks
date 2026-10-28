@@ -80,22 +80,21 @@ function renderStatuses(
   statuses: Readonly<ReadonlyMap<string, string>>,
   theme: FooterTheme,
 ): Readonly<{ fast: string; guard: string; other: readonly string[] }> {
-  const visible = [...statuses]
-    .map(
-      ([key, text]: readonly [string, string]) =>
-        [key, sanitizeSingleLine(text)] as const,
-    )
-    .filter(([, text]) => text !== "")
-    .toSorted(([first], [second]) => first.localeCompare(second));
-  const fast = visible.find(([key]) => key === "fast");
-  const guard = visible.find(([key]) => key === "guard");
-  return {
-    fast: fast === undefined ? "" : theme.fg("muted", fast[1]),
-    guard: guard === undefined ? "" : theme.fg("muted", guard[1]),
-    other: visible
-      .filter(([key]) => key !== "guard" && key !== "fast")
-      .map(([, text]) => theme.fg("muted", text)),
-  };
+  const visible = new Map(
+    [...statuses]
+      .map(
+        ([key, text]: readonly [string, string]) =>
+          [key, sanitizeSingleLine(text)] as const,
+      )
+      .filter(([, text]) => text !== "")
+      .toSorted(([first], [second]) => first.localeCompare(second))
+      .map(([key, text]) => [key, theme.fg("muted", text)]),
+  );
+  const fast = visible.get("fast") ?? "";
+  const guard = visible.get("guard") ?? "";
+  visible.delete("fast");
+  visible.delete("guard");
+  return { fast, guard, other: [...visible.values()] };
 }
 
 function contextColor(percent: number): ThemeColor {
@@ -203,38 +202,21 @@ function renderRight(
   return groups.join(parts.theme.fg("dim", groupSeparator));
 }
 
-// Keep the model, context, and guard when even the minimal fields overflow.
-function renderTinyLine(parts: RenderParts, width: number): string {
-  const divider = parts.theme.fg("dim", groupSeparator);
-  const guard = parts.guard === "" ? "" : `${divider}${parts.guard}`;
-  const core = `${parts.model}${divider}${parts.context}${guard}`;
-  if (visibleWidth(core) <= width) {
-    const left = truncateToWidth(
-      parts.left,
-      Math.max(0, width - visibleWidth(core) - minimumGap),
-    );
-    const gap = Math.max(0, width - visibleWidth(left) - visibleWidth(core));
-    return `${left}${" ".repeat(gap)}${core}`;
+// Fill from the right, so guard outlasts context and context outlasts the model.
+function fitFromRight(
+  items: readonly string[],
+  divider: string,
+  width: number,
+): string {
+  const [first = "", ...rest] = items;
+  if (rest.length === 0) {
+    return truncateToWidth(first, width);
   }
-  const context = `${parts.context}${guard}`;
-  const modelWidth = width - visibleWidth(context) - visibleWidth(divider);
-  if (visibleWidth(context) > width) {
-    if (parts.guard === "") {
-      return truncateToWidth(parts.context, width);
-    }
-    const guardWidth = visibleWidth(parts.guard);
-    if (guardWidth >= width) {
-      return truncateToWidth(parts.guard, width);
-    }
-    const contextWidth = width - guardWidth - visibleWidth(divider);
-    return contextWidth > 0
-      ? `${truncateToWidth(parts.context, contextWidth)}${divider}${parts.guard}`
-      : parts.guard;
-  }
-  if (modelWidth <= 0) {
-    return context;
-  }
-  return `${truncateToWidth(parts.model, modelWidth)}${divider}${context}`;
+  const tail = rest.join(divider);
+  const room = width - visibleWidth(tail) - visibleWidth(divider);
+  return room > 0
+    ? `${truncateToWidth(first, room)}${divider}${tail}`
+    : fitFromRight(rest, divider, width);
 }
 
 export function renderStatusLine(
@@ -244,7 +226,7 @@ export function renderStatusLine(
 ): string[] {
   const parts = prepareParts(snapshot, theme);
   const shown = new Set<DisplayField>(dropOrder);
-  const room = Math.max(0, width - minimumGap);
+  const room = width - minimumGap;
   let right = renderRight(parts, shown);
   for (const field of dropOrder) {
     if (visibleWidth(right) <= room) {
@@ -254,13 +236,17 @@ export function renderStatusLine(
     right = renderRight(parts, shown);
   }
   if (visibleWidth(right) > room) {
-    return [renderTinyLine(parts, width)];
+    right = fitFromRight(
+      [parts.model, parts.context, parts.guard].filter(Boolean),
+      parts.theme.fg("dim", groupSeparator),
+      width,
+    );
   }
   const left = truncateToWidth(
     parts.left,
     Math.max(0, width - visibleWidth(right) - minimumGap),
   );
-  const gap = width - visibleWidth(left) - visibleWidth(right);
+  const gap = Math.max(0, width - visibleWidth(left) - visibleWidth(right));
   return [`${left}${" ".repeat(gap)}${right}`];
 }
 
