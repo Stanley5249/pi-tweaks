@@ -128,6 +128,7 @@ function createContext(
         prompts.push(title);
         return choice;
       },
+      setStatus: () => {},
     },
   };
   return { ctx, notes, prompts };
@@ -295,16 +296,29 @@ test("shellCallOf picks bash and powershell commands only", () => {
 });
 
 test("/guard shows status, and on and off set it", async () => {
-  const { ctx, notes } = createContext(
+  const base = createContext(
     fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
   );
+  const { notes } = base;
+  const statuses = new Map<string, string | undefined>();
+  const ctx: GuardContext = {
+    ...base.ctx,
+    ui: {
+      ...base.ctx.ui,
+      setStatus: (key: string, text: string | undefined) => {
+        statuses.set(key, text);
+      },
+    },
+  };
   const controller = createGuardController(memoryChoice());
   await controller.load(ctx, noConfig);
   expect(controller.isEnabled()).toBe(true);
+  expect(statuses.get("guard")).toBe("guard");
   runGuardCommand("", ctx, controller);
   expect(notes.at(-1)).toBe("Guard is on with classifier openai/gpt-6-luna");
   runGuardCommand("off", ctx, controller);
   expect(controller.isEnabled()).toBe(false);
+  expect(statuses.get("guard")).toBeUndefined();
   runGuardCommand("", ctx, controller);
   expect(notes.at(-1)).toBe("Guard is off");
   runGuardCommand("on", ctx, controller);

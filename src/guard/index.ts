@@ -56,7 +56,7 @@ export type GuardContext = Readonly<{
   modelRegistry: ClassifierRegistry;
   sessionManager: Readonly<{ getBranch: () => readonly TranscriptEntry[] }>;
   signal?: AbortSignal | undefined;
-  ui: Readonly<Pick<ExtensionUIContext, "notify" | "select">>;
+  ui: Readonly<Pick<ExtensionUIContext, "notify" | "select" | "setStatus">>;
 }>;
 
 type PromptOptions = Readonly<{
@@ -200,6 +200,10 @@ export function createGuardController(
   let session = emptySession;
   const blocks = createBlockCounter();
 
+  function showStatus(ctx: GuardContext): void {
+    ctx.ui.setStatus("guard", isEnabled() ? "guard" : undefined);
+  }
+
   async function load(ctx: GuardContext, agentDir: string): Promise<void> {
     const { config, problems } = await loadConfig(agentDir, ctx.cwd);
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
@@ -208,6 +212,7 @@ export function createGuardController(
     const explicit = choice.get() ?? config.enabled;
     const missing = classifier === undefined && explicit !== false;
     warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
+    showStatus(ctx);
   }
 
   // On by default, but only an explicit choice runs without a classifier.
@@ -219,6 +224,7 @@ export function createGuardController(
 
   function setEnabled(ctx: GuardContext, value: boolean): void {
     choice.set(value);
+    showStatus(ctx);
     ctx.ui.notify(statusText(value, session), "info");
   }
 

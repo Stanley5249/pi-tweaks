@@ -27,7 +27,7 @@ command that is not read-only.
 - `/guard off`: turn Guard off.
 
 The choice lasts until pi exits, including across `/new`, `/resume`, `/fork`,
-and `/reload`. Run `/guard` to check the current state.
+and `/reload`. The status bar shows `guard` while Guard is on.
 
 ## What happens to a command
 
