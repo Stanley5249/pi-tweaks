@@ -68,7 +68,10 @@ export function createFastController(
   let enabled = store.get();
 
   function sync(ctx: FastContext): void {
-    ctx.ui.setStatus("fast", enabled ? "fast" : undefined);
+    ctx.ui.setStatus(
+      "fast",
+      enabled && isFastModeSupported(ctx.model?.provider) ? "fast" : undefined,
+    );
   }
 
   function enable(ctx: FastContext): void {
@@ -131,6 +134,16 @@ export default function fastExtension(pi: FastAPI): void {
   pi.on("session_start", (_event: unknown, ctx: FastContext) => {
     controller.sync(ctx);
   });
+
+  pi.on(
+    "model_select",
+    (
+      event: Readonly<{ model: FastModel }>,
+      ctx: Readonly<Pick<FastContext, "ui">>,
+    ) => {
+      controller.sync({ model: event.model, ui: ctx.ui });
+    },
+  );
 
   pi.on(
     "before_provider_request",

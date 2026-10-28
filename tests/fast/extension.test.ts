@@ -168,7 +168,19 @@ test("fastExtension registers command and event listeners", () => {
 
   expect(commands).toContain("fast");
   expect(events).toContain("session_start");
+  expect(events).toContain("model_select");
   expect(events).toContain("before_provider_request");
+});
+
+test("unsupported providers hide the badge without resetting the preference", () => {
+  const { ctx, state } = createTestContext("openai");
+  const controller = createFastController(memoryState());
+  controller.enable(ctx);
+  controller.sync({ ...ctx, model: { provider: "antigravity" } });
+  expect(state.statuses["fast"]).toBeUndefined();
+  expect(controller.isEnabled()).toBe(true);
+  controller.sync(ctx);
+  expect(state.statuses["fast"]).toBe("fast");
 });
 
 test("a new controller keeps the state of the previous runtime", () => {
