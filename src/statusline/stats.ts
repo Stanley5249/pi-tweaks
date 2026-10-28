@@ -1,60 +1,69 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
-
 const kilo = 1000;
 const million = kilo * kilo;
 const decimalScale = 10;
 const decimalKiloLimit = decimalScale * kilo;
 const percentScale = 100;
+const usageTypes = new Set(["usage", "compaction", "branch_summary"]);
 
 export type TokenUsage = Readonly<{
   cacheRead?: number;
   cacheWrite?: number;
   cost?: Readonly<{ total: number }>;
   input?: number;
-  output?: number;
 }>;
 export type UsageEntry = Readonly<{
   message?: Readonly<{ role: string; usage?: TokenUsage }>;
   type: string;
+  usage?: TokenUsage;
 }>;
 export type UsageStats = Readonly<{
-  cacheRead: number;
-  cacheWrite: number;
   cost: number;
-  input: number;
   latestCacheHitRate: number | undefined;
-  output: number;
 }>;
 
-export function collectUsage(entries: readonly UsageEntry[]): UsageStats {
-  const totals: { -readonly [Key in keyof UsageStats]: UsageStats[Key] } = {
-    cacheRead: 0,
-    cacheWrite: 0,
-    cost: 0,
-    input: 0,
-    latestCacheHitRate: undefined,
-    output: 0,
-  };
+export function collectUsage(
+  entries: readonly UsageEntry[],
+  branch: readonly UsageEntry[],
+): UsageStats {
+  let cost = 0;
   for (const entry of entries) {
-    const usage =
-      entry.type === "message" && entry.message?.role === "assistant"
-        ? entry.message.usage
-        : undefined;
+    cost += usageForCost(entry)?.cost?.total ?? 0;
+  }
+  const latestCacheHitRate = cacheHitRate(branch);
+  return { cost, latestCacheHitRate };
+}
+
+function usageForCost(entry: UsageEntry): TokenUsage | undefined {
+  if (entry.type === "message") {
+    const role = entry.message?.role;
+    if (role === "assistant" || role === "toolResult") {
+      return entry.message?.usage;
+    }
+    return undefined;
+  }
+  return usageTypes.has(entry.type) ? entry.usage : undefined;
+}
+
+function cacheHitRate(branch: readonly UsageEntry[]): number | undefined {
+  let latest: number | undefined = undefined;
+  for (const entry of branch) {
+    const usage = assistantUsage(entry);
     if (usage !== undefined) {
-      totals.cacheRead += usage.cacheRead ?? 0;
-      totals.cacheWrite += usage.cacheWrite ?? 0;
-      totals.cost += usage.cost?.total ?? 0;
-      totals.input += usage.input ?? 0;
-      totals.output += usage.output ?? 0;
-      const promptTokens =
+      const prompt =
         (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-      if (promptTokens > 0) {
-        totals.latestCacheHitRate =
-          ((usage.cacheRead ?? 0) / promptTokens) * percentScale;
+      if (prompt > 0) {
+        latest = ((usage.cacheRead ?? 0) / prompt) * percentScale;
       }
     }
   }
-  return totals;
+  return latest;
+}
+
+function assistantUsage(entry: UsageEntry): TokenUsage | undefined {
+  if (entry.type !== "message" || entry.message?.role !== "assistant") {
+    return undefined;
+  }
+  return entry.message.usage;
 }
 
 export function formatTokens(count: number): string {
@@ -68,18 +77,4 @@ export function formatTokens(count: number): string {
     return `${Math.round(count / kilo)}k`;
   }
   return `${(count / million).toFixed(1)}M`;
-}
-
-export function formatCwd(cwd: string, home?: string): string {
-  if (home === undefined || home === "") {
-    return cwd;
-  }
-  const path = relative(resolve(home), resolve(cwd));
-  const inside =
-    path === "" ||
-    (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-  if (!inside) {
-    return cwd;
-  }
-  return path === "" ? "~" : `~${sep}${path}`;
 }

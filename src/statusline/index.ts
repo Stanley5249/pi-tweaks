@@ -1,4 +1,3 @@
-import process from "node:process";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -8,7 +7,7 @@ import type {
 import { createStatusFooter } from "./render";
 import type { FooterTheme, StatusModel } from "./render";
 import { collectUsage } from "./stats";
-import type { UsageEntry } from "./stats";
+import type { UsageEntry, UsageStats } from "./stats";
 
 export type StatusContext = Readonly<
   Pick<ExtensionContext, "getContextUsage" | "mode" | "thinkingLevel"> & {
@@ -16,7 +15,9 @@ export type StatusContext = Readonly<
     sessionManager: Readonly<{
       getBranch: () => readonly UsageEntry[];
       getCwd: () => string;
-      getSessionName: () => string | undefined;
+      getEntries: () => readonly UsageEntry[];
+      getSessionId: () => string;
+      getLeafId: () => string | null;
     }>;
     ui: Readonly<Pick<ExtensionUIContext, "notify" | "setFooter">>;
   }
@@ -33,12 +34,30 @@ type FooterData = Readonly<
   >
 >;
 
-function homeDirectory(): string | undefined {
-  const home = process.env["USERPROFILE"];
-  if (home !== undefined && home !== "") {
-    return home;
-  }
-  return process.env["HOME"];
+type CachedUsage = Readonly<{
+  session: string;
+  leaf: string | null;
+  stats: UsageStats;
+}>;
+
+function createUsageReader(ctx: StatusContext): () => UsageStats {
+  let cached: CachedUsage | undefined = undefined;
+  return () => {
+    const session = ctx.sessionManager.getSessionId();
+    const leaf = ctx.sessionManager.getLeafId();
+    // Pi entries are append-only, so an append or tree navigation moves the leaf.
+    if (cached?.session !== session || cached.leaf !== leaf) {
+      cached = {
+        leaf,
+        session,
+        stats: collectUsage(
+          ctx.sessionManager.getEntries(),
+          ctx.sessionManager.getBranch(),
+        ),
+      };
+    }
+    return cached.stats;
+  };
 }
 
 class FooterController implements StatusController {
@@ -52,6 +71,7 @@ class FooterController implements StatusController {
       ctx.ui.setFooter(undefined);
       return;
     }
+    const usage = createUsageReader(ctx);
     ctx.ui.setFooter(
       (
         tui: Readonly<{ requestRender: () => void }>,
@@ -63,11 +83,9 @@ class FooterController implements StatusController {
             branch: footerData.getGitBranch(),
             contextUsage: ctx.getContextUsage(),
             cwd: ctx.sessionManager.getCwd(),
-            home: homeDirectory(),
             model: ctx.model,
-            sessionName: ctx.sessionManager.getSessionName(),
-            stats: collectUsage(ctx.sessionManager.getBranch()),
-            statuses: [...footerData.getExtensionStatuses().values()],
+            stats: usage(),
+            statuses: footerData.getExtensionStatuses(),
             thinkingLevel: ctx.thinkingLevel,
           }),
           {

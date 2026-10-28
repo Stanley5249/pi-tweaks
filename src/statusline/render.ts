@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import type {
   ContextUsage,
   ExtensionContext,
@@ -7,25 +8,19 @@ import type {
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
-import { formatCwd, formatTokens } from "./stats";
+import { formatTokens } from "./stats";
 import type { UsageStats } from "./stats";
 
 // Pi does not export ThinkingLevel from its package index.
 export type ThinkingLevel = NonNullable<ExtensionContext["thinkingLevel"]>;
 export type FooterTheme = Readonly<
-  Pick<Theme, "bold" | "fg" | "getThinkingBorderColor">
+  Pick<Theme, "fg" | "getThinkingBorderColor">
 >;
 export type FooterEnvironment = Readonly<{
   onBranchChange: (callback: () => void) => () => void;
   requestRender: () => void;
   theme: FooterTheme;
 }>;
-
-const contextWarning = 50;
-const contextCritical = 80;
-const costPrecision = 3;
-const minimumGap = 2;
-
 export type StatusModel = Readonly<{
   contextWindow: number;
   id: string;
@@ -36,20 +31,79 @@ export type FooterSnapshot = Readonly<{
   branch: string | null;
   contextUsage?: Readonly<ContextUsage> | undefined;
   cwd: string;
-  home?: string | undefined;
   model?: StatusModel | undefined;
-  sessionName?: string | undefined;
   stats: UsageStats;
-  statuses: readonly string[];
+  statuses: Readonly<ReadonlyMap<string, string>>;
   thinkingLevel?: ThinkingLevel | undefined;
 }>;
 
-function metric(
+const contextWarning = 50;
+const contextCritical = 80;
+const costPrecision = 3;
+const minimumGap = 2;
+// Guard sorts first and survives every width, then fast, then the rest.
+const statusRanks = new Map([
+  ["guard", 0],
+  ["fast", 1],
+]);
+const otherStatusRank = 2;
+const groupSeparator = " | ";
+
+type DisplayField =
+  | "cost"
+  | "hit"
+  | "provider"
+  | "statuses"
+  | "thinking"
+  | "window";
+// Narrow rows drop fields in this order.
+const dropOrder: readonly DisplayField[] = [
+  "hit",
+  "provider",
+  "window",
+  "cost",
+  "statuses",
+  "thinking",
+];
+
+type RenderParts = Readonly<{
+  context: string;
+  guard: string;
+  left: string;
+  model: string;
+  otherStatuses: readonly string[];
+  provider: string;
+  separator: string;
+  snapshot: FooterSnapshot;
+  theme: FooterTheme;
+  window: number | undefined;
+}>;
+
+function statusRank(key: string): number {
+  return statusRanks.get(key) ?? otherStatusRank;
+}
+
+function renderStatuses(
+  statuses: Readonly<ReadonlyMap<string, string>>,
   theme: FooterTheme,
-  label: string,
-  [color, value]: readonly [ThemeColor, string],
-): string {
-  return `${theme.fg("dim", label)} ${theme.fg(color, value)}`;
+): Readonly<{ guard: string; other: readonly string[] }> {
+  const visible = [...statuses]
+    .map(
+      ([key, text]: readonly [string, string]) =>
+        [key, sanitizeSingleLine(text)] as const,
+    )
+    .filter(([, text]) => text !== "")
+    .toSorted(
+      ([first], [second]) =>
+        statusRank(first) - statusRank(second) || first.localeCompare(second),
+    );
+  const guard = visible.find(([key]) => key === "guard");
+  return {
+    guard: guard === undefined ? "" : theme.fg("muted", guard[1]),
+    other: visible
+      .filter(([key]) => key !== "guard")
+      .map(([, text]) => theme.fg("muted", text)),
+  };
 }
 
 function contextColor(percent: number): ThemeColor {
@@ -62,119 +116,139 @@ function contextColor(percent: number): ThemeColor {
   return "muted";
 }
 
-function renderTop(
-  snapshot: FooterSnapshot,
-  theme: FooterTheme,
-  width: number,
-): string {
-  const cwd = sanitizeSingleLine(formatCwd(snapshot.cwd, snapshot.home));
-  const branch = sanitizeSingleLine(snapshot.branch ?? "");
-  const session = sanitizeSingleLine(snapshot.sessionName ?? "");
-  // The path shrinks first so the branch stays visible.
-  const branchText =
-    branch === "" ? "" : ` ${theme.fg("muted", `(${branch})`)}`;
-  const pathWidth = Math.max(0, width - visibleWidth(branchText));
-  const path = theme.bold(theme.fg("text", truncateToWidth(cwd, pathWidth)));
-  const line = `${path}${branchText}`;
-  if (session === "") {
-    return line;
-  }
-  const full = `${line} ${theme.fg("dim", "·")} ${theme.fg("muted", session)}`;
-  return visibleWidth(full) <= width ? full : line;
-}
-
-function renderStats(snapshot: FooterSnapshot, theme: FooterTheme): string[] {
-  const { stats } = snapshot;
-  const count = (label: string, value: number): string =>
-    value > 0 ? metric(theme, label, ["muted", formatTokens(value)]) : "";
-  const cost =
-    stats.cost > 0
-      ? `${theme.fg("dim", "$")}${theme.fg("muted", stats.cost.toFixed(costPrecision))}`
-      : "";
-  const hasCache = stats.cacheRead > 0 || stats.cacheWrite > 0;
-  const rate = stats.latestCacheHitRate;
-  const hit =
-    hasCache && rate !== undefined
-      ? metric(theme, "hit", ["muted", `${rate.toFixed(0)}%`])
-      : "";
-  // Narrow rows drop stats from the end, so this order is their priority.
-  return [
-    cost,
-    count("in", stats.input),
-    count("out", stats.output),
-    hit,
-    count("read", stats.cacheRead),
-    count("write", stats.cacheWrite),
-  ].filter((part) => part !== "");
-}
-
-function renderContext(
-  snapshot: FooterSnapshot,
-  theme: FooterTheme,
-): readonly [string, string] {
+function renderContext(snapshot: FooterSnapshot, theme: FooterTheme): string {
   const percent = snapshot.contextUsage?.percent;
-  const display =
+  const value =
     percent === undefined || percent === null ? "?" : `${percent.toFixed(0)}%`;
-  const window =
-    snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow ?? 0;
-  const compact = metric(theme, "ctx", [contextColor(percent ?? 0), display]);
-  return [`${compact}${theme.fg("dim", `/${formatTokens(window)}`)}`, compact];
+  return `${theme.fg("dim", "ctx")} ${theme.fg(contextColor(percent ?? 0), value)}`;
+}
+
+function prepareParts(
+  snapshot: FooterSnapshot,
+  theme: FooterTheme,
+): RenderParts {
+  const muted = (text: string): string => theme.fg("muted", text);
+  const separator = theme.fg("dim", " · ");
+  const branch = sanitizeSingleLine(snapshot.branch ?? "");
+  const left = [
+    muted(sanitizeSingleLine(basename(snapshot.cwd) || snapshot.cwd)),
+    branch === "" ? "" : muted(branch),
+  ]
+    .filter(Boolean)
+    .join(separator);
+  const statuses = renderStatuses(snapshot.statuses, theme);
+  return {
+    context: renderContext(snapshot, theme),
+    guard: statuses.guard,
+    left,
+    model: muted(sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model"),
+    otherStatuses: statuses.other,
+    provider: sanitizeSingleLine(snapshot.model?.provider ?? ""),
+    separator,
+    snapshot,
+    theme,
+    window:
+      snapshot.contextUsage?.contextWindow ?? snapshot.model?.contextWindow,
+  };
 }
 
 function renderModel(
-  snapshot: FooterSnapshot,
-  theme: FooterTheme,
-): Readonly<{ name: string; variants: readonly string[] }> {
-  const model = sanitizeSingleLine(snapshot.model?.id ?? "") || "no-model";
-  const provider = sanitizeSingleLine(snapshot.model?.provider ?? "");
-  const name = theme.bold(theme.fg("accent", model));
-  const parts = [name];
-  if (snapshot.model?.reasoning === true) {
+  parts: RenderParts,
+  shown: Readonly<ReadonlySet<DisplayField>>,
+): string {
+  const { model, provider, separator, snapshot, theme } = parts;
+  let text = model;
+  if (shown.has("provider") && provider !== "") {
+    text = `${theme.fg("dim", `(${provider})`)} ${text}`;
+  }
+  if (shown.has("thinking") && snapshot.model?.reasoning === true) {
     const level = snapshot.thinkingLevel ?? "off";
     // Match the editor border, which uses the same theme helper.
-    const color = theme.getThinkingBorderColor(level);
-    parts.push(`${theme.fg("dim", "·")} ${color(level)}`);
+    text += `${separator}${theme.getThinkingBorderColor(level)(level)}`;
   }
-  const thinking = parts.join(" ");
-  const full =
-    provider === ""
-      ? thinking
-      : `${theme.fg("dim", `(${provider})`)} ${thinking}`;
-  return { name, variants: [full, thinking, name] };
+  return text;
 }
 
-function joinSides(left: string, right: string, width: number): string {
-  const gap = Math.max(
-    minimumGap,
-    width - visibleWidth(left) - visibleWidth(right),
+function renderMetrics(
+  parts: RenderParts,
+  shown: Readonly<ReadonlySet<DisplayField>>,
+): string {
+  const { context, separator, snapshot, theme, window } = parts;
+  const dim = (text: string): string => theme.fg("dim", text);
+  const muted = (text: string): string => theme.fg("muted", text);
+  const metrics: string[] = [];
+  if (shown.has("cost") && snapshot.stats.cost > 0) {
+    metrics.push(muted(`$${snapshot.stats.cost.toFixed(costPrecision)}`));
+  }
+  metrics.push(
+    shown.has("window") && window !== undefined && window > 0
+      ? `${context}${dim(`/${formatTokens(window)}`)}`
+      : context,
   );
-  return `${left}${" ".repeat(gap)}${right}`;
+  const rate = snapshot.stats.latestCacheHitRate;
+  if (shown.has("hit") && rate !== undefined) {
+    metrics.push(`${dim("hit")} ${muted(`${rate.toFixed(0)}%`)}`);
+  }
+  return metrics.join(separator);
 }
 
-function renderUsageRow(
+function renderRight(
+  parts: RenderParts,
+  shown: Readonly<ReadonlySet<DisplayField>>,
+): string {
+  const statuses = [
+    parts.guard,
+    ...(shown.has("statuses") ? parts.otherStatuses : []),
+  ].filter(Boolean);
+  const groups = [renderModel(parts, shown), renderMetrics(parts, shown)];
+  if (statuses.length > 0) {
+    groups.push(statuses.join(parts.separator));
+  }
+  return groups.join(parts.theme.fg("dim", groupSeparator));
+}
+
+// Keep the model, context, and guard when even the minimal fields overflow.
+function renderTinyLine(parts: RenderParts, width: number): string {
+  const divider = parts.theme.fg("dim", groupSeparator);
+  const guard = parts.guard === "" ? "" : `${divider}${parts.guard}`;
+  const core = `${parts.model}${divider}${parts.context}${guard}`;
+  if (visibleWidth(core) <= width) {
+    const left = truncateToWidth(
+      parts.left,
+      Math.max(0, width - visibleWidth(core) - minimumGap),
+    );
+    const gap = Math.max(0, width - visibleWidth(left) - visibleWidth(core));
+    return `${left}${" ".repeat(gap)}${core}`;
+  }
+  const context = `${parts.context}${guard}`;
+  const modelWidth = width - visibleWidth(context) - visibleWidth(divider);
+  if (visibleWidth(context) > width || modelWidth <= 0) {
+    return truncateToWidth(context, width);
+  }
+  return `${truncateToWidth(parts.model, modelWidth)}${divider}${context}`;
+}
+
+export function renderStatusLine(
   snapshot: FooterSnapshot,
   theme: FooterTheme,
   width: number,
-): string {
-  const { name, variants } = renderModel(snapshot, theme);
-  const nameWidth = visibleWidth(name);
-  const contexts = renderContext(snapshot, theme);
-  const context =
-    contexts.find(
-      (text) => nameWidth + minimumGap + visibleWidth(text) <= width,
-    ) ?? contexts[1];
-  const modelWidth = Math.max(0, width - visibleWidth(context) - minimumGap);
-  const model =
-    variants.find((text) => visibleWidth(text) <= modelWidth) ??
-    truncateToWidth(name, modelWidth);
-  const stats = renderStats(snapshot, theme);
-  const separator = theme.fg("dim", " · ");
-  const right = (): string => [...stats, context].join(separator);
-  const budget = width - visibleWidth(model) - minimumGap;
-  while (stats.length > 0 && visibleWidth(right()) > budget) {
-    stats.pop();
+): string[] {
+  const parts = prepareParts(snapshot, theme);
+  const shown = new Set<DisplayField>(dropOrder);
+  const room = width - visibleWidth(parts.left) - minimumGap;
+  let right = renderRight(parts, shown);
+  for (const field of dropOrder) {
+    if (visibleWidth(right) <= room) {
+      break;
+    }
+    shown.delete(field);
+    right = renderRight(parts, shown);
   }
-  return joinSides(model, right(), width);
+  if (visibleWidth(right) > room) {
+    return [renderTinyLine(parts, width)];
+  }
+  const gap = width - visibleWidth(parts.left) - visibleWidth(right);
+  return [`${parts.left}${" ".repeat(gap)}${right}`];
 }
 
 export function createStatusFooter(
@@ -200,22 +274,4 @@ export function createStatusFooter(
       return renderStatusLine(read(), environment.theme, width);
     },
   };
-}
-
-export function renderStatusLine(
-  snapshot: FooterSnapshot,
-  theme: FooterTheme,
-  width: number,
-): string[] {
-  const lines = [
-    renderTop(snapshot, theme, width),
-    renderUsageRow(snapshot, theme, width),
-  ];
-  if (snapshot.statuses.length > 0) {
-    const statuses = snapshot.statuses
-      .map((text) => sanitizeSingleLine(text))
-      .join(" ");
-    lines.push(theme.fg("muted", statuses));
-  }
-  return lines.map((line) => truncateToWidth(line, width));
 }

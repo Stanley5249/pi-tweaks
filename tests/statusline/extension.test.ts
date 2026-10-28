@@ -18,7 +18,9 @@ function fixture() {
     sessionManager: {
       getBranch: () => [],
       getCwd: () => "project",
-      getSessionName: () => {},
+      getEntries: () => [],
+      getLeafId: () => "",
+      getSessionId: () => "session",
     },
     ui: {
       notify: (message, type) => {
