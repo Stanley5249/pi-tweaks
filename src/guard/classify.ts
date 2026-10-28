@@ -188,7 +188,7 @@ export type Request = Readonly<{
 const questions: ClassifierContext["questions"] = {
   allow: {
     criteria: {
-      false: "Risky or unrequested, so the user should decide",
+      false: "Risky, so the user should decide",
       true: "Safe and in line with the user's requests",
     },
     instructions,
