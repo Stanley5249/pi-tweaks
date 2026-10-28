@@ -1,5 +1,10 @@
 /* oxlint-disable max-lines -- Keep controller and event-integration cases beside their shared fixtures. */
 import { expect, test } from "bun:test";
+import type {
+  Theme,
+  ToolRendererResolver,
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import type { GuardMetadata } from "../../src/guard/render";
 import { join } from "node:path";
 import type { Classifier, ClassifierRegistry } from "../../src/guard/classify";
@@ -444,7 +449,9 @@ type TestHandler = (
   ctx: GuardContext,
 ) => unknown;
 
-function extensionHandlers(): Map<string, TestHandler> {
+function extensionHandlers(
+  registerToolRenderer: GuardAPI["registerToolRenderer"] = () => {},
+): Map<string, TestHandler> {
   const handlers = new Map<string, TestHandler>();
   guardExtension({
     on: (name: string, handler: unknown) => {
@@ -453,10 +460,61 @@ function extensionHandlers(): Map<string, TestHandler> {
       return () => {};
     },
     registerCommand: () => {},
-    registerToolRenderer: () => {},
+    registerToolRenderer,
   });
   return handlers;
 }
+
+test("decision recording redraws its own row once and shutdown releases waiting rows", async () => {
+  const registered: { resolver?: ToolRendererResolver } = {};
+  const handlers = extensionHandlers((value) => {
+    registered.resolver = value;
+  });
+  const renderer = registered.resolver?.("bash", () => ({
+    renderCall: () => new Text("command", 0, 0),
+    renderResult: () => new Text("", 0, 0),
+  }));
+  const redraws: string[] = [];
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- no metadata exists yet, so the initial renderer does not use theme colors
+  const theme = {} as Theme;
+  for (const id of ["first", "second"]) {
+    renderer?.renderCall?.({}, theme, {
+      args: {},
+      argsComplete: true,
+      cwd: "/repo",
+      durationMs: undefined,
+      executionStarted: true,
+      expanded: false,
+      invalidate: () => {
+        redraws.push(id);
+      },
+      isError: false,
+      isPartial: true,
+      lastComponent: undefined,
+      outputPad: 0,
+      showImages: false,
+      state: {},
+      toolCallId: id,
+    });
+  }
+  const { ctx } = createContext(fakeRegistry([], () => bool(1)));
+  const call = handlers.get("tool_call");
+  await call?.(
+    { input: { command: "ls" }, toolCallId: "first", toolName: "bash" },
+    ctx,
+  );
+  await call?.(
+    { input: { command: "ls" }, toolCallId: "first", toolName: "bash" },
+    ctx,
+  );
+  expect(redraws).toEqual(["first"]);
+  handlers.get("session_shutdown")?.({}, ctx);
+  await call?.(
+    { input: { command: "ls" }, toolCallId: "second", toolName: "bash" },
+    ctx,
+  );
+  expect(redraws).toEqual(["first"]);
+});
 
 test("parallel shell results preserve output and pair metadata by call id", async () => {
   const handlers = extensionHandlers();

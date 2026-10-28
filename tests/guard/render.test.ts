@@ -4,8 +4,17 @@ import type { GuardMetadata } from "../../src/guard/render";
 import type {
   Theme,
   ToolRendererResolver,
+  ToolRenderers,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import {
+  ToolExecutionComponent,
+  initTheme,
+} from "@earendil-works/pi-coding-agent";
+import { Text, stripTerminalSequences } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
+
+// Pi's actual row requires a theme. Do not start a theme watcher.
+initTheme("dark", false);
 
 type RenderContext = Parameters<
   NonNullable<NonNullable<ReturnType<ToolRendererResolver>>["renderResult"]>
@@ -106,7 +115,7 @@ function renderContext(): RenderContext {
     lastComponent: undefined,
     outputPad: 0,
     showImages: false,
-    state: undefined,
+    state: {},
     toolCallId: "test",
   };
 }
@@ -114,17 +123,12 @@ function renderContext(): RenderContext {
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- renderer uses only fg; preserve plain text for assertions
 const plainTheme = { fg: (_color: unknown, text: string) => text } as Theme;
 
-test("renderer preserves delegate reuse and displays persisted metadata only on final results", () => {
+test("renderer preserves delegate reuse and displays persisted metadata during partial and final results", () => {
   const delegate = new Text("shell output", 0, 0);
   const received: unknown[] = [];
-  const renderers = {
-    // oxlint-disable-next-line max-params -- match Pi's renderer signature
-    renderResult: (
-      _result: unknown,
-      _options: unknown,
-      _theme: unknown,
-      context: Readonly<{ lastComponent: unknown }>,
-    ) => {
+  const renderers: ToolRenderers = {
+    // oxlint-disable-next-line max-params, typescript/prefer-readonly-parameter-types -- match Pi's renderer signature
+    renderResult: (_result, _options, _theme, context) => {
       received.push(context.lastComponent);
       return delegate;
     },
@@ -159,18 +163,21 @@ test("renderer preserves delegate reuse and displays persisted metadata only on 
     plainTheme,
     context,
   );
-  expect(partial?.render(80).join("\n").trimEnd()).toBe("shell output");
+  expect(partial?.render(80).map((line) => line.trimEnd())).toEqual([
+    "shell output",
+    "Allowed by classifier",
+  ]);
   expect(guardRenderer("read", () => renderers)).toBe(renderers);
 });
 
-test("live blocked results use their pending decision before persisted details arrive", () => {
+test("silent blocked results show their pending decision without a leading gap", () => {
   const resolve = createGuardRenderer((id) =>
     id === "test"
       ? { decision: "block", source: "classifier", verdict: "block" }
       : undefined,
   );
   const renderer = resolve("bash", () => ({
-    renderResult: () => new Text("blocked", 0, 0),
+    renderResult: () => new Text("", 0, 0),
   }));
   const result = renderer?.renderResult?.(
     { content: [], details: {} },
@@ -178,7 +185,97 @@ test("live blocked results use their pending decision before persisted details a
     plainTheme,
     renderContext(),
   );
-  expect(result?.render(80).join("\n")).toContain("Blocked by classifier");
+  expect(result?.render(80).map((line) => line.trimEnd())).toEqual([
+    "Blocked by classifier",
+  ]);
+});
+
+function rowProbe() {
+  const pending = new Map<string, GuardMetadata>();
+  const redraws = new Map<string, () => void>();
+  const requests: string[] = [];
+  const resolve = createGuardRenderer(
+    (id) => pending.get(id),
+    (id, invalidate) => {
+      redraws.set(id, invalidate);
+    },
+  );
+  const definition = resolve("bash", () => ({
+    renderCall: () => new Text("$ command", 0, 0),
+    renderResult: () => new Text("output", 0, 0),
+  }));
+  function row(id: string): ToolExecutionComponent {
+    const ui = {
+      requestRender: () => {
+        requests.push(id);
+      },
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Pi's row only calls requestRender on this injected TUI
+    const tui = ui as unknown as TUI;
+    const component = new ToolExecutionComponent(
+      "bash",
+      id,
+      {},
+      { outputPad: 0 },
+      definition,
+      tui,
+      "/repo",
+    );
+    component.markExecutionStarted();
+    return component;
+  }
+  return { pending, redraws, requests, row };
+}
+
+function lines(
+  component: Readonly<Pick<ToolExecutionComponent, "render">>,
+): string[] {
+  return component
+    .render(80)
+    .map((line) => stripTerminalSequences(line).trimEnd());
+}
+
+test("real Pi rows show a ready classifier decision before output and move it below output", () => {
+  const { pending, redraws, requests, row } = rowProbe();
+  const first = row("first");
+  const second = row("second");
+  expect(lines(first)).toEqual(["", "", "$ command", ""]);
+  requests.length = 0;
+  pending.set("first", metadata);
+  redraws.get("first")?.();
+  expect(requests).toEqual(["first"]);
+  expect(lines(first)).toEqual([
+    "",
+    "",
+    "$ command",
+    "Allowed by classifier",
+    "",
+  ]);
+  expect(lines(second)).toEqual(["", "", "$ command", ""]);
+  first.updateResult({ content: [], isError: false }, true);
+  expect(lines(first)).toEqual([
+    "",
+    "",
+    "$ command",
+    "output",
+    "Allowed by classifier",
+    "",
+  ]);
+  first.updateResult({
+    content: [],
+    details: { guard: metadata },
+    isError: false,
+  });
+  pending.clear();
+  first.invalidate();
+  expect(lines(first)).toEqual([
+    "",
+    "",
+    "$ command",
+    "output",
+    "Allowed by classifier",
+    "",
+  ]);
 });
 
 test("renderer leaves historical and malformed metadata results unchanged", () => {

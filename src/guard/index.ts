@@ -303,14 +303,24 @@ export function runGuardCommand(
 export default function guardExtension(pi: GuardAPI): void {
   const controller = createGuardController();
   const pending = new Map<string, GuardMetadata>();
-  pi.registerToolRenderer(createGuardRenderer((id) => pending.get(id)));
+  const redraws = new Map<string, () => void>();
+  pi.registerToolRenderer(
+    createGuardRenderer(
+      (id) => pending.get(id),
+      (id, invalidate) => {
+        redraws.set(id, invalidate);
+      },
+    ),
+  );
 
   pi.on("session_start", async (_event: unknown, ctx: GuardContext) => {
     pending.clear();
+    redraws.clear();
     await controller.load(ctx, getAgentDir());
   });
   pi.on("session_shutdown", () => {
     pending.clear();
+    redraws.clear();
   });
 
   // pi loads AGENTS.md and similar files per prompt, so capture them here.
@@ -334,6 +344,9 @@ export default function guardExtension(pi: GuardAPI): void {
         ? undefined
         : controller.guard(call, ctx, (metadata) => {
             pending.set(event.toolCallId, metadata);
+            const redraw = redraws.get(event.toolCallId);
+            redraws.delete(event.toolCallId);
+            redraw?.();
           });
     },
   );
@@ -358,6 +371,8 @@ export default function guardExtension(pi: GuardAPI): void {
     if (message.role !== "toolResult") {
       return {};
     }
+    // Another extension may block a call before Guard records a decision.
+    redraws.delete(message.toolCallId);
     // Keep skipped-hook decisions for the live renderer, whose result
     // predates this message. The map lives for one session.
     const metadata = pending.get(message.toolCallId);

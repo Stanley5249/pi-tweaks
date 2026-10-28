@@ -1,4 +1,7 @@
-import type { ToolRendererResolver } from "@earendil-works/pi-coding-agent";
+import type {
+  ToolRendererResolver,
+  ToolRenderers,
+} from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { sanitizeSingleLine } from "../terminal";
 import type { Component } from "@earendil-works/pi-tui";
@@ -105,9 +108,82 @@ class GuardResultComponent extends Container {
   original: Component | undefined;
 }
 
+type GuardRendering = Readonly<{
+  calls: Readonly<WeakMap<object, GuardResultComponent>>;
+  lookup: (toolCallId: string) => GuardMetadata | undefined;
+  watch: (toolCallId: string, invalidate: () => void) => void;
+}>;
+
+function wrapGuardCall(
+  renderCall: NonNullable<ToolRenderers["renderCall"]>,
+  state: GuardRendering,
+): NonNullable<ToolRenderers["renderCall"]> {
+  // Pi does not invoke renderResult until the first tool update or result.
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Pi owns the renderer callback signature
+  return (args, theme, context) => {
+    const component =
+      context.lastComponent instanceof GuardResultComponent
+        ? context.lastComponent
+        : new GuardResultComponent();
+    component.original = renderCall(args, theme, {
+      ...context,
+      lastComponent: component.original,
+    });
+    component.clear();
+    component.addChild(component.original);
+    state.calls.set(recordOf(context.state), component);
+    if (context.executionStarted && context.isPartial) {
+      const metadata = state.lookup(context.toolCallId);
+      if (Value.Check(Metadata, metadata)) {
+        const label = guardLabel(metadata, context.expanded);
+        component.addChild(new Text(theme.fg("muted", label), 0, 0));
+      } else {
+        state.watch(context.toolCallId, context.invalidate);
+      }
+    }
+    return component;
+  };
+}
+
+function wrapGuardResult(
+  renderResult: NonNullable<ToolRenderers["renderResult"]>,
+  state: GuardRendering,
+): NonNullable<ToolRenderers["renderResult"]> {
+  // oxlint-disable-next-line max-params, typescript/prefer-readonly-parameter-types -- Pi owns the renderer callback signature
+  return (result, options, theme, context) => {
+    const component =
+      context.lastComponent instanceof GuardResultComponent
+        ? context.lastComponent
+        : new GuardResultComponent();
+    component.original = renderResult(result, options, theme, {
+      ...context,
+      lastComponent: component.original,
+    });
+    component.clear();
+    component.addChild(component.original);
+    // Move the provisional footer out of the call slot in this same update.
+    const call = state.calls.get(recordOf(context.state));
+    if (call?.original !== undefined) {
+      call.clear();
+      call.addChild(call.original);
+    }
+    const details: unknown = result.details;
+    const metadata =
+      recordOf(details)["guard"] ?? state.lookup(context.toolCallId);
+    if (Value.Check(Metadata, metadata)) {
+      const label = guardLabel(metadata, options.expanded);
+      component.addChild(new Text(theme.fg("muted", label), 0, 0));
+    }
+    return component;
+  };
+}
+
 export function createGuardRenderer(
-  lookup: (toolCallId: string) => GuardMetadata | undefined,
+  lookup: GuardRendering["lookup"],
+  watch: GuardRendering["watch"] = () => {},
 ): ToolRendererResolver {
+  // Pi shares state across the call/result slots, but delegates own its fields.
+  const state: GuardRendering = { calls: new WeakMap(), lookup, watch };
   return (name, resolve) => {
     const original = resolve();
     if (
@@ -116,30 +192,12 @@ export function createGuardRenderer(
     ) {
       return original;
     }
-    const { renderResult } = original;
     return {
       ...original,
-      // oxlint-disable-next-line max-params, typescript/prefer-readonly-parameter-types -- Pi owns the renderer callback signature
-      renderResult: (result, options, theme, context) => {
-        const component =
-          context.lastComponent instanceof GuardResultComponent
-            ? context.lastComponent
-            : new GuardResultComponent();
-        component.original = renderResult(result, options, theme, {
-          ...context,
-          lastComponent: component.original,
-        });
-        component.clear();
-        component.addChild(component.original);
-        const details: unknown = result.details;
-        const metadata =
-          recordOf(details)["guard"] ?? lookup(context.toolCallId);
-        if (!options.isPartial && Value.Check(Metadata, metadata)) {
-          const label = guardLabel(metadata, options.expanded);
-          component.addChild(new Text(`\n${theme.fg("muted", label)}`, 0, 0));
-        }
-        return component;
-      },
+      ...(original.renderCall === undefined
+        ? {}
+        : { renderCall: wrapGuardCall(original.renderCall, state) }),
+      renderResult: wrapGuardResult(original.renderResult, state),
     };
   };
 }
