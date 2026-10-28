@@ -37,16 +37,43 @@ test("renders one right-aligned line with the agreed groups", () => {
   expect(lines).toHaveLength(1);
   expect(lines[0]).toStartWith("pi-tweaks · main");
   expect(lines[0]).toEndWith(
-    "(openai) gpt-6.1-sol · medium | $0.106 · ctx 24%/272k · hit 48% | guard · fast",
+    "(openai) gpt-6.1-sol · medium · fast | $0.106 · ctx 24%/272k · hit 48% | guard",
   );
   expect(visibleWidth(lines[0] ?? "")).toBe(140);
   expect(lines[0]).not.toContain("parent/");
+});
+
+test("keeps fast with the model and shortens a long left side first", () => {
+  const data = {
+    ...snapshot(),
+    branch: "a-very-long-branch-name-that-fills-the-footer",
+  };
+  const [line] = renderStatusLine(data, theme, 80);
+  expect(line).toContain("gpt-6.1-sol · medium · fast");
+  expect(line).toContain("guard");
+  expect(line).not.toContain(data.branch);
+});
+
+test("omits fast from the model group when its status is absent", () => {
+  const data = { ...snapshot(), statuses: new Map([["guard", "guard"]]) };
+  const [line] = renderStatusLine(data, theme, 140);
+  expect(line).toContain("gpt-6.1-sol · medium |");
+  expect(line).not.toContain("fast");
 });
 
 test("keeps Guard ahead of generic statuses at narrow widths", () => {
   for (const width of [40, 60]) {
     const [line] = renderStatusLine(snapshot(), theme, width);
     expect(line).toContain("guard");
+    expect(visibleWidth(line ?? "")).toBeLessThanOrEqual(width);
+  }
+});
+
+test("preserves Guard before context when the line is extremely narrow", () => {
+  const data = { ...snapshot(), statuses: new Map([["guard", "guard off"]]) };
+  for (const width of [9, 10, 12]) {
+    const [line] = renderStatusLine(data, theme, width);
+    expect(line).toContain("guard off");
     expect(visibleWidth(line ?? "")).toBeLessThanOrEqual(width);
   }
 });
