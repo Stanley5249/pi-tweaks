@@ -21,6 +21,7 @@ import type {
 } from "../../src/guard/index";
 import type { Choice } from "../../src/guard/choice";
 import { ringBell } from "../../src/terminal";
+import { renderContext } from "./render-context";
 
 function memoryChoice(): Choice {
   const state: { value?: boolean } = {};
@@ -492,24 +493,18 @@ test("decision recording redraws its own row once and shutdown releases waiting 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- no metadata exists yet, so the initial renderer does not use theme colors
   const theme = {} as Theme;
   for (const id of ["first", "second"]) {
-    renderer?.renderCall?.({}, theme, {
-      args: {},
-      argsComplete: true,
-      cwd: "/repo",
-      durationMs: undefined,
-      executionStarted: true,
-      expanded: false,
-      invalidate: () => {
-        redraws.push(id);
-      },
-      isError: false,
-      isPartial: true,
-      lastComponent: undefined,
-      outputPad: 0,
-      showImages: false,
-      state: {},
-      toolCallId: id,
-    });
+    renderer?.renderCall?.(
+      {},
+      theme,
+      renderContext({
+        durationMs: undefined,
+        invalidate: () => {
+          redraws.push(id);
+        },
+        isPartial: true,
+        toolCallId: id,
+      }),
+    );
   }
   const { ctx } = createContext(fakeRegistry([], () => bool(1)));
   const call = handlers.get("tool_call");

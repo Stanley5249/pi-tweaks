@@ -1,24 +1,17 @@
 import { expect, test } from "bun:test";
 import { createGuardRenderer, guardLabel } from "../../src/guard/render";
 import type { GuardMetadata } from "../../src/guard/render";
-import type {
-  Theme,
-  ToolRendererResolver,
-  ToolRenderers,
-} from "@earendil-works/pi-coding-agent";
+import type { Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import {
   ToolExecutionComponent,
   initTheme,
 } from "@earendil-works/pi-coding-agent";
 import { Text, stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
+import { renderContext } from "./render-context";
 
 // Pi's actual row requires a theme. Do not start a theme watcher.
 initTheme("dark", false);
-
-type RenderContext = Parameters<
-  NonNullable<NonNullable<ReturnType<ToolRendererResolver>>["renderResult"]>
->[3];
 
 const noPending = new Map<string, GuardMetadata>();
 const guardRenderer = createGuardRenderer((id) => noPending.get(id));
@@ -100,25 +93,6 @@ test("expanded labels use colon-free prose and preserve model IDs", () => {
     guardLabel({ ...metadata, model: "evil\u001B[31m\ntext" }, true),
   ).toContain("Model evil text");
 });
-
-function renderContext(): RenderContext {
-  return {
-    args: {},
-    argsComplete: true,
-    cwd: "/repo",
-    durationMs: 1,
-    executionStarted: true,
-    expanded: false,
-    invalidate: () => {},
-    isError: false,
-    isPartial: false,
-    lastComponent: undefined,
-    outputPad: 0,
-    showImages: false,
-    state: {},
-    toolCallId: "test",
-  };
-}
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- renderer uses only fg; preserve plain text for assertions
 const plainTheme = { fg: (_color: unknown, text: string) => text } as Theme;
