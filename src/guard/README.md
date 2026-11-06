@@ -16,9 +16,10 @@ order:
 pi's `docs/models.md` lists the other classifier providers, and the `models`
 field below replaces this list. Run `/guard` to see which model Guard uses.
 
-When no classifier is available, Guard stays off and shows a warning. If you
-turn it on anyway with `/guard on` or `"enabled": true`, pi asks you about every
-command that is not read-only.
+Guard starts off. Turn it on with `/guard on`, or with `"enabled": true` in
+`guard.json` to start every session with it on. If no classifier is available
+while Guard is on, pi shows a warning and asks you about every command that is
+not read-only.
 
 ## Commands
 

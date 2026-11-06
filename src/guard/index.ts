@@ -183,9 +183,7 @@ async function respond(
 function statusText(enabled: boolean, session: Session): string {
   const model = session.classifier;
   if (!enabled) {
-    return model === undefined
-      ? "Guard is off because no configured classifier is available"
-      : "Guard is off";
+    return "Guard is off";
   }
   return model === undefined
     ? "Guard is on, but approval is required because no classifier is available"
@@ -209,17 +207,14 @@ export function createGuardController(
     const classifier = await findClassifier(ctx.modelRegistry, config.models);
     session = { ...session, classifier, config };
     blocks.reset();
-    const explicit = choice.get() ?? config.enabled;
-    const missing = classifier === undefined && explicit !== false;
+    const missing = classifier === undefined && isEnabled();
     warn(ctx, missing ? [...problems, noClassifier(config)] : problems);
     showStatus(ctx);
   }
 
-  // On by default, but only an explicit choice runs without a classifier.
+  // Off by default, so only an explicit choice turns the guard on.
   function isEnabled(): boolean {
-    return (
-      choice.get() ?? session.config.enabled ?? session.classifier !== undefined
-    );
+    return choice.get() ?? session.config.enabled ?? false;
   }
 
   function setEnabled(ctx: GuardContext, value: boolean): void {

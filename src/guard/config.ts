@@ -24,8 +24,7 @@ const Allow = Type.Array(Type.String(), {
   description: "Prose rules for actions the classifier should allow.",
 });
 const Enabled = Type.Boolean({
-  description:
-    "Guard state at startup. Unset means on whenever a classifier is available.",
+  description: "Guard state at startup. Unset means off.",
 });
 const Environment = Type.Array(Type.String(), {
   description: "Facts about trusted hosts, repositories, and data.",

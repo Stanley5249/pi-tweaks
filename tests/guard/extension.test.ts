@@ -275,7 +275,6 @@ test("/guard survives a new extension runtime", async () => {
   const choice = memoryChoice();
   const first = createGuardController(choice);
   await first.load(ctx, noConfig);
-  // On by default, but not without a classifier.
   expect(first.isEnabled()).toBe(false);
   first.setEnabled(ctx, true);
   const second = createGuardController(choice);
@@ -296,6 +295,15 @@ test("shellCallOf picks bash and powershell commands only", () => {
   ).toBeUndefined();
 });
 
+test("guard starts off even with a classifier available", async () => {
+  const { ctx } = createContext(
+    fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
+  );
+  const controller = createGuardController(memoryChoice());
+  await controller.load(ctx, noConfig);
+  expect(controller.isEnabled()).toBe(false);
+});
+
 test("/guard shows status, and on and off set it", async () => {
   const base = createContext(
     fakeRegistry(["openai/gpt-6-luna"], () => bool(1)),
@@ -313,6 +321,7 @@ test("/guard shows status, and on and off set it", async () => {
   };
   const controller = createGuardController(memoryChoice());
   await controller.load(ctx, noConfig);
+  runGuardCommand("on", ctx, controller);
   expect(controller.isEnabled()).toBe(true);
   expect(statuses.get("guard")).toBe("guard");
   runGuardCommand("", ctx, controller);
@@ -388,13 +397,13 @@ test("missing classifiers have distinct metadata and natural status messages", a
   );
   const controller = createGuardController(memoryChoice());
   await controller.load(ctx, noConfig);
-  expect(controller.status()).toBe(
-    "Guard is off because no configured classifier is available",
-  );
+  expect(controller.status()).toBe("Guard is off");
+  expect(notes).toHaveLength(0);
+  controller.setEnabled(ctx, true);
+  await controller.load(ctx, noConfig);
   expect(notes.at(-1)).toBe(
     "No configured classifier is available\nTried openai/gpt-6-luna, typesafe/jev-latest",
   );
-  controller.setEnabled(ctx, true);
   expect(controller.status()).toBe(
     "Guard is on, but approval is required because no classifier is available",
   );
