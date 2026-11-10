@@ -41,7 +41,8 @@ type CachedUsage = Readonly<{
 }>;
 
 function createUsageReader(ctx: StatusContext): () => UsageStats {
-  let cached: CachedUsage | undefined = undefined;
+  // oxlint-disable-next-line init-declarations -- The cache stays empty until the first read.
+  let cached: CachedUsage | undefined;
   return () => {
     const session = ctx.sessionManager.getSessionId();
     const leaf = ctx.sessionManager.getLeafId();

@@ -45,7 +45,8 @@ function usageForCost(entry: UsageEntry): TokenUsage | undefined {
 }
 
 function cacheHitRate(branch: readonly UsageEntry[]): number | undefined {
-  let latest: number | undefined = undefined;
+  // oxlint-disable-next-line init-declarations -- No rate exists until valid usage is found.
+  let latest: number | undefined;
   for (const entry of branch) {
     const usage = assistantUsage(entry);
     if (usage !== undefined) {
